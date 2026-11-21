@@ -1,4 +1,7 @@
 /** 设置系统 */
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 /** 用户可调项。默认值与 1.1.1 的行为完全一致：不配置就一切照旧。 */
 export const DEFAULTS = Object.freeze({
@@ -92,7 +95,18 @@ const finite = (value) => {
   return Number.isFinite(number) ? number : undefined;
 };
 
+/** 文件层设置：~/.dsh/spine-settings.json，优先级在显式 config 之下、环境变量之上。 */
+function fileSettings() {
+  try {
+    const file = process.env.SPINE_SETTINGS_FILE || join(process.env.DSH_HOME || join(homedir(), ".dsh"), "spine-settings.json");
+    return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+  } catch {
+    return {};
+  }
+}
+
 export function readSettings(config = {}, env = process.env) {
+  const file = fileSettings();
   const next = {};
   for (const [key, fallback] of Object.entries(DEFAULTS)) {
     const envName = ENV[key];
@@ -101,7 +115,7 @@ export function readSettings(config = {}, env = process.env) {
       return key === "keepRounds" && (!Number.isInteger(number) || number < 1) ? undefined : number;
     };
     next[key] =
-      numeric(config?.[key]) ?? numeric(envName ? env?.[envName] : undefined) ?? fallback;
+      numeric(config?.[key]) ?? numeric(file?.[key]) ?? numeric(envName ? env?.[envName] : undefined) ?? fallback;
   }
   if (!next.pointerTokens) next.pointerTokens = next.chunkMax;
   return Object.freeze(next);

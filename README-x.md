@@ -89,6 +89,18 @@ v2 失败一律 fail-closed：找不到会话日志就返回 `missing-session-lo
 
 回滚：设 `SPINE_STORE=v1` 重启；或卸载插件。
 
+## 配置优先级
+
+`显式 config > ~/.dsh/spine-settings.json > 环境变量 > 默认值`
+
+`~/.dsh/spine-settings.json` 示例：
+
+```json
+{ "officialAbove": 300000, "deepCutAbove": 200000, "burstCuts": 3, "minNetGain": 3000 }
+```
+
+（环境变量在这个宿主里写不进去 —— 注册表访问被拒，所以用文件层。）
+
 ## 大刀 + 小刀
 
 | 变量 | 默认 | 作用 |
