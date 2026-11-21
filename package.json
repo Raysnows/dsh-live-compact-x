@@ -1,7 +1,7 @@
 {
   "name": "dsh-live-compact-x",
-  "version": "1.2.0-x.1",
-  "description": "In-place newest-turn compaction (fork): adds a net-gain gate so a cut must beat its card cost. Compress while the task runs and keep the prefix.",
+  "version": "1.3.0-x.1",
+  "description": "DSH 压缩后端 fork：净收益门槛 + 零副本存储（索引 + 日志回读）+ 大刀/小刀两级压缩。取代官方 compaction-basic，可随时卸载。",
   "license": "MIT",
   "author": "MerkyorLynn <268568828+MerkyorLynn@users.noreply.github.com>",
   "type": "module",
@@ -39,14 +39,22 @@
     "netgain.js",
     "README-x.md",
     "v2",
-    "REVIEW.md",
-    "tools"
+    "REVIEW.md"
   ],
   "keywords": [
+    "dsh",
     "dsh-plugin",
     "deepseek-harness",
-    "dsh",
-    "compaction"
+    "deepseek",
+    "cordis",
+    "plugin",
+    "compaction",
+    "context-window",
+    "prefix-cache",
+    "token",
+    "cost",
+    "memory",
+    "agent"
   ],
   "scripts": {
     "test:gate": "node test/p0-gate.mjs && node test/p0-blockers.mjs && node test/excerpt.mjs && node test/shadow-worker.mjs && node test/shadow-worker-pool.mjs && node test/shadow-worker-fuse.mjs && node test/v107.mjs && node --test test/turn-end-bridge.mjs && node --test test/failed-diagnostics.test.mjs test/public-exports.test.mjs test/cooldown.test.mjs test/gate-config.test.mjs test/stand-down.test.mjs test/drain-stopline.mjs test/scan-once.mjs test/issue-19.mjs test/issue-20.mjs test/issue-34.mjs test/issue-49.mjs test/issue-62.mjs test/review-derived.test.mjs test/windows-acl.test.mjs test/issue-27.mjs test/issue-29.mjs test/issue-29-notice.mjs test/client-settings.test.mjs test/settings-integration.test.mjs test/runtime-lifecycle.mjs test/shadow-lifecycle.mjs test/finalize-over-32000.mjs test/p1-fable-review.mjs",
@@ -85,10 +93,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Tranquillitatis-Lab/dsh-live-compact.git"
+    "url": "git+https://github.com/1250589385/dsh-live-compact-x.git"
   },
-  "homepage": "https://github.com/Tranquillitatis-Lab/dsh-live-compact#readme",
+  "homepage": "https://github.com/1250589385/dsh-live-compact-x#readme",
   "bugs": {
-    "url": "https://github.com/Tranquillitatis-Lab/dsh-live-compact/issues"
+    "url": "https://github.com/1250589385/dsh-live-compact-x/issues"
   }
 }
