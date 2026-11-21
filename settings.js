@@ -22,6 +22,10 @@ deepCutAbove: 200000, // 超过这个 token 数，允许一刀跨过早先的 us
 officialAbove: 0, // >0：超过这个 token 数且没有可切小段时，主动调一次官方大压缩（0 = 关）
 
 officialCooldownMs: 1200000, // 两次大压缩之间至少隔 20 分钟
+
+mergeBreakEven: 2, // 中刀盈亏平衡上限：一次性重算 / 每轮省下 超过这个倍数就不切
+
+mergeCooldownMs: 300000, // 两刀中刀之间至少隔 5 分钟
   cooldownMs: 0, // 0 = 只用 seq 一次性跳过
 });
 
@@ -46,6 +50,10 @@ deepCutAbove: "SPINE_DEEP_CUT_ABOVE",
 officialAbove: "SPINE_OFFICIAL_ABOVE",
 
 officialCooldownMs: "SPINE_OFFICIAL_COOLDOWN_MS",
+
+mergeBreakEven: "SPINE_MERGE_BREAK_EVEN",
+
+mergeCooldownMs: "SPINE_MERGE_COOLDOWN_MS",
 });
 
 // volatile 字段的现值是 cosmokit 的取值对象，读之前先摊平。
