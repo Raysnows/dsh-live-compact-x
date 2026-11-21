@@ -2111,13 +2111,22 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
         const why = state.handoverPending;
         state.handoverPending = null;
         const before = this.ctx.tokenMeter.measure(agent.session).totalTokens;
+        // 官方摘要是一次独立的模型调用，不该被「这一步结束」的信号掐掉（实测被 abort 过）。
+        const handoverAbort = new AbortController();
+        const handoverTimer = setTimeout(() => handoverAbort.abort(), 180000);
         try {
-          const result = await super.compactIfNeeded(agent, "context-overflow", owned.signal);
+          const result = await super.compactIfNeeded(agent, "context-overflow", handoverAbort.signal);
           const after = this.ctx.tokenMeter.measure(agent.session).totalTokens;
           this.recordDecision(state, { phase: "official-handover", result: result ? "ran" : "null", before, after, reason: why });
           if (result) return result;
         } catch (error) {
           this.recordDecision(state, { phase: "official-handover", result: "failed", reason: String(error?.message || error), reason_at: why });
+          // 失败就地重排：一分钟后下一轮再试，而不是等满 20 分钟冷却。
+          state.handoverPending = why;
+          const cd = Number(readSettings(this.liveConfig).officialCooldownMs) || 0;
+          state.lastOfficialAt = Date.now() - Math.max(0, cd - 60000);
+        } finally {
+          clearTimeout(handoverTimer);
         }
       }
       return await super.compactIfNeeded(agent, trigger, owned.signal);

@@ -1,0 +1,13 @@
+import { readSettings } from "../settings.js";
+let pass = 0, fail = 0;
+const ok = (c, n, x = "") => { if (c) { pass++; console.log("  ok  " + n); } else { fail++; console.log("  FAIL " + n + " " + x); } };
+const d = readSettings({}, {});
+ok(d.deepCutAbove === 0, "中刀默认关闭", String(d.deepCutAbove));
+ok(d.bigGate === 650000, "bigGate 默认 650k", String(d.bigGate));
+ok(d.minNetGain === 3000, "净收益门槛默认 3k", String(d.minNetGain));
+ok(d.burstCuts === 3, "连切默认 3", String(d.burstCuts));
+ok(d.officialAbove === 0, "大刀主动交接默认关", String(d.officialAbove));
+const e = readSettings({}, { SPINE_BIG_GATE: "500000", SPINE_DEEP_CUT_ABOVE: "200000" });
+ok(e.bigGate === 500000 && e.deepCutAbove === 200000, "环境变量可覆盖");
+console.log("\n通过 " + pass + " / 失败 " + fail);
+if (fail) process.exitCode = 1;

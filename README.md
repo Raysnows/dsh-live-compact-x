@@ -15,7 +15,9 @@
 
 1. **净收益门槛**——切掉的 token 必须明显大于这张卡的成本，不再“切了个寂寞”；
 2. **零副本存储**——被切掉的原文不另存一份，卡片只记事件号，回读时从会话日志取（实测省 10 倍空间）；
-3. **大刀 + 小刀**——小刀照旧切尾巴；追不上时允许一次跨轮大刀，或请官方大压缩出手，压完继续小刀。
+3. **大刀 + 小刀**——小刀照旧切尾巴；追不上时请官方大压缩出手，压完继续小刀。
+
+> 还有一个**中刀**（卡片合并：吃掉几张旧卡重压成一张），默认**关闭**——它会让切点之后的缓存重算一次，属于“顶不住时才开”的档位。
 
 ## 安装
 
@@ -38,7 +40,7 @@ plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.3-x.1")
   "bigGate": 650000,
   "minNetGain": 3000,
   "burstCuts": 3,
-  "deepCutAbove": 200000,
+  "deepCutAbove": 0,
   "officialAbove": 300000,
   "officialCooldownMs": 1200000
 }
@@ -53,7 +55,7 @@ plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.3-x.1")
 | `bigGate` | `SPINE_BIG_GATE` | 650000 | 超过即停小切，交给大刀（**可按窗口大小调**） |
 | `minNetGain` | `SPINE_MIN_NET_GAIN` | 3000 | 净收益门槛；0 = 关闭 |
 | `burstCuts` | `SPINE_BURST_CUTS` | 3 | 一次收尾最多连切几刀 |
-| `deepCutAbove` | `SPINE_DEEP_CUT_ABOVE` | 200000 | 超过它允许跨早先 user 扩段 |
+| `deepCutAbove` | `SPINE_DEEP_CUT_ABOVE` | **0（关闭）** | 中刀（卡片合并）开关；设 200000 左右启用 |
 | `officialAbove` | `SPINE_OFFICIAL_ABOVE` | 0（示例 300000） | 超过它且无可切段时请官方大压缩；0 = 关 |
 | `officialCooldownMs` | `SPINE_OFFICIAL_COOLDOWN_MS` | 1200000 | 两次大压缩的最小间隔 |
 | — | `SPINE_STORE` | `v2` | 设 `v1` 回到上游影子副本路径 |

@@ -17,7 +17,7 @@ minNetGain: 3000, // 净收益门槛：切掉 - 卡片 < 这个数就不切
 
 burstCuts: 3, // 一次收尾最多连切几刀（小刀；非 drain 会话以前只切一刀）
 
-deepCutAbove: 200000, // 超过这个 token 数，允许一刀跨过早先的 user 消息（大刀，最多 32k）
+deepCutAbove: 0, // 中刀（卡片合并）默认关闭；>0 才启用，例如 200000
 
 officialAbove: 0, // >0：超过这个 token 数且没有可切小段时，主动调一次官方大压缩（0 = 关）
 
