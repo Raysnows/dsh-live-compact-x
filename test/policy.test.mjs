@@ -27,21 +27,21 @@ console.log("3. 回本门槛：默认关闭 = 上游行为");
   const v = cutPolicy({ totalTokens: 500000, spanTokens: 30000, cardTokens: 2500, prefixTokens: 200000, settings });
   ok(v.allow === true, "paybackTurns=0 一律放行");
   ok(v.netGain === 27500, "netGain = span - card = " + v.netGain);
-  ok(v.rewriteTokens === 300000, "rewrite = total - prefix = " + v.rewriteTokens);
+  ok(v.rewriteTokens === 272500, "rewrite = 尾巴 + 新卡片（被切掉的段不算重算）= " + v.rewriteTokens);
 }
 console.log("4. 回本门槛：赔本的刀要挡住");
 {
   const settings = { paybackTurns: 3 };
   const blocked = cutPolicy({ totalTokens: 500000, spanTokens: 30000, cardTokens: 2500, prefixTokens: 200000, settings });
   ok(blocked.allow === false, "重算 300k / 净赚 27.5k，3 轮赚不回 -> 不切");
-  ok(Math.abs(blocked.payback - 10.91) < 0.01, "回本轮数 " + blocked.payback);
+  ok(Math.abs(blocked.payback - 9.91) < 0.01, "回本轮数 " + blocked.payback);
   const cheap = cutPolicy({ totalTokens: 500000, spanTokens: 30000, cardTokens: 2500, prefixTokens: 470000, settings });
-  ok(cheap.allow === true, "重算 30k / 净赚 27.5k -> 1.09 轮，允许");
+  ok(cheap.allow === true, "切点已在尾巴上，只剩卡片 2.5k 要重算 -> 0.09 轮，允许");
 }
 console.log("5. 回本门槛：边界与异常输入");
 {
   const settings = { paybackTurns: 2 };
-  const exact = cutPolicy({ totalTokens: 100000, spanTokens: 20000, cardTokens: 0, prefixTokens: 60000, settings });
+  const exact = cutPolicy({ totalTokens: 120000, spanTokens: 20000, cardTokens: 0, prefixTokens: 60000, settings });
   ok(exact.allow === true, "重算恰好 = 净收益*2 时放行（大于才挡）");
   const zero = cutPolicy({ totalTokens: 100000, spanTokens: 1000, cardTokens: 1000, prefixTokens: 0, settings });
   ok(zero.allow === true, "净收益为 0 不触发门槛（交给 minNetGain 管）");

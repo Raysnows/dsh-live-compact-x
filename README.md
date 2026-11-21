@@ -17,12 +17,14 @@
 2. **零副本存储**——被切掉的原文不另存一份，卡片只记事件号，回读时从会话日志取（实测省 10 倍空间）；
 3. **大刀 + 小刀**——小刀照旧切尾巴；追不上时请官方大压缩出手，压完继续小刀。
 
-> 还有一个**中刀**（卡片合并：吃掉几张旧卡重压成一张），默认**关闭**——它会让切点之后的缓存重算一次，属于“顶不住时才开”的档位。
+> 还有一个**中刀**（卡片合并：从某张旧卡一路切到尾巴，整段重压成一张卡），默认**关闭**——它一次会吃掉很大一段原文，属于“顶不住时才开”的档位。
+> 账是这样算的：切完之后请求里只剩“新卡片 + 尾巴那几轮”，被吃掉的那一段不再进请求，前缀缓存照旧命中，
+> 所以一次中刀的重算面通常只有几 k，而省下的往往是几十 k（实测 253k 的会话：切 118k、重算 16k、净赚 108k）。
 
 ## 安装
 
 ```
-plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.9-x.0")
+plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.10-x.0")
 ```
 
 装完重启宿主。它的 `cordis.patch.yml` 会先禁用官方 `compaction-basic` 的**插件安装位**，再插入自己。
@@ -54,8 +56,12 @@ plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.9-x.0")
   "minNetGain": 3000,
   "burstCuts": 3,
   "deepCutAbove": 0,
+  "mergeMaxSpan": 4,
+  "mergeBreakEven": 2,
   "officialAbove": 300000,
-  "officialCooldownMs": 1200000
+  "officialCooldownMs": 1200000,
+  "paybackTurns": 0,
+  "spanBandRatio": 0
 }
 ```
 
@@ -68,7 +74,12 @@ plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.9-x.0")
 | `bigGate` | `SPINE_BIG_GATE` | 650000 | 超过即停小切，交给大刀（**可按窗口大小调**） |
 | `minNetGain` | `SPINE_MIN_NET_GAIN` | 3000 | 净收益门槛；0 = 关闭 |
 | `burstCuts` | `SPINE_BURST_CUTS` | 3 | 一次收尾最多连切几刀 |
-| `deepCutAbove` | `SPINE_DEEP_CUT_ABOVE` | **0（关闭）** | 中刀（卡片合并）开关；设 200000 左右启用 |
+| `deepCutAbove` | `SPINE_DEEP_CUT_ABOVE` | **0（关闭）** | 中刀（卡片合并）开关；上下文超过它才试，本地建议 120000~200000 |
+| `mergeMaxSpan` | `SPINE_MERGE_MAX_SPAN` | 4 | 中刀窗口上限 = chunkMax × 它（默认 128k）；太长的段不进中刀 |
+| `mergeBreakEven` | `SPINE_MERGE_BREAK_EVEN` | 2 | 中刀盈亏上限：一次性重算 / 净赚 超过这个倍数就不切 |
+| `mergeCooldownMs` | `SPINE_MERGE_COOLDOWN_MS` | 300000 | 两次中刀的最小间隔 |
+| `paybackTurns` | `SPINE_PAYBACK_TURNS` | 0（关闭） | 小刀限速：一次性重算超过 净赚×轮数 就不切 |
+| `spanBandRatio` | `SPINE_SPAN_BAND_RATIO` | 0（关闭） | 动态刀长：单刀上限 = 上下文 × 比例，夹在 chunkMin..chunkMax |
 | `officialAbove` | `SPINE_OFFICIAL_ABOVE` | 0（示例 300000） | 超过它且无可切段时请官方大压缩；0 = 关 |
 | `officialCooldownMs` | `SPINE_OFFICIAL_COOLDOWN_MS` | 1200000 | 两次大压缩的最小间隔 |
 | — | `SPINE_STORE` | `v2` | 设 `v1` 回到上游影子副本路径 |
@@ -87,6 +98,9 @@ plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.9-x.0")
 | 4 | 连切（一次收尾多刀） | `index.js` |
 | 5 | 大刀：跨轮扩段 / 官方大压缩交接 | `plan.js`、`index.js` |
 | 6 | 文件层设置 `~/.dsh/spine-settings.json` | `settings.js` |
+| 7 | 中刀：从卡片一路切到尾巴，窗口由 mergeMaxSpan 管 | `policy.js`、`index.js` |
+| 8 | 动态策略层：动态刀长 / 回本门槛 | `policy.js` |
+| 9 | 宿主注入的上下文快照不再当用户墙 | `notice.js`、`index.js` |
 
 ## 存储模型（v2）
 
@@ -108,7 +122,10 @@ plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.9-x.0")
 
 ```powershell
 node --check index.js
-node test/netgain.test.mjs        # 6/6
+node test/netgain.test.mjs         # 6/6
+node test/policy.test.mjs          # 21/21
+node test/merge-span.test.mjs      # 34/34
+node test/context-notice.test.mjs  # 17/17
 node v2/test/v2.test.mjs <session.v4.jsonl.zstd>   # 23/23
 node test/wire.test.mjs <session.v4.jsonl.zstd>    # 11/11
 ```

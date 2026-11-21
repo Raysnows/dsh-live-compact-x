@@ -25,6 +25,8 @@ officialCooldownMs: 1200000, // 两次大压缩之间至少隔 20 分钟
 
 mergeBreakEven: 2, // 中刀盈亏平衡上限：一次性重算 / 每轮省下 超过这个倍数就不切
 
+mergeMaxSpan: 4, // 中刀窗口 = chunkMax × 这个倍数（默认 4 = 128000）。0/1 退回旧的 chunkMax 上限
+
 mergeCooldownMs: 300000, // 两刀中刀之间至少隔 5 分钟
 
 paybackTurns: 0, // >0：一刀的一次性重算 > netGain × 这个轮数就不切（0 = 关，与上游正刀一致）
@@ -58,6 +60,8 @@ officialAbove: "SPINE_OFFICIAL_ABOVE",
 officialCooldownMs: "SPINE_OFFICIAL_COOLDOWN_MS",
 
 mergeBreakEven: "SPINE_MERGE_BREAK_EVEN",
+
+mergeMaxSpan: "SPINE_MERGE_MAX_SPAN",
 
 mergeCooldownMs: "SPINE_MERGE_COOLDOWN_MS",
 
@@ -205,6 +209,9 @@ export function configSchema(z, stockSchema) {
       .volatile(),
     mergeBreakEven: count(0)
       .description("中刀盈亏上限：一次性重算 / 净收益 超过这个倍数就不切。")
+      .volatile(),
+    mergeMaxSpan: count(0)
+      .description("中刀窗口上限 = chunkMax × 这个倍数（默认 4，即 128000）。中刀要把卡片到切点整段重压，段太长就不出手；0 或 1 退回旧的 chunkMax 上限。")
       .volatile(),
     mergeCooldownMs: count(0)
       .description("两刀中刀之间的最小间隔毫秒。")

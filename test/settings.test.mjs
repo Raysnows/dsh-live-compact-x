@@ -10,5 +10,8 @@ ok(d.burstCuts === 3, "连切默认 3", String(d.burstCuts));
 ok(d.officialAbove === 0, "大刀主动交接默认关", String(d.officialAbove));
 const e = readSettings({}, { SPINE_BIG_GATE: "500000", SPINE_DEEP_CUT_ABOVE: "200000" });
 ok(e.bigGate === 500000 && e.deepCutAbove === 200000, "环境变量可覆盖");
+ok(d.mergeMaxSpan === 4 && d.mergeBreakEven === 2, "中刀窗口默认 4 × chunkMax、盈亏上限 2", String(d.mergeMaxSpan));
+const f = readSettings({}, { SPINE_MERGE_MAX_SPAN: "6" });
+ok(f.mergeMaxSpan === 6, "中刀窗口可用环境变量调", String(f.mergeMaxSpan));
 console.log("\n通过 " + pass + " / 失败 " + fail);
 if (fail) process.exitCode = 1;

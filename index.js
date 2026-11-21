@@ -24,7 +24,7 @@ import { DEFAULTS, engineConfig, readSettings } from "./settings.js";
 import { attachBackupHint, backgroundJobId, backupClaimOk, buildCard, collectJobs, cutLongReadRound, finishedToolRounds, indexToolCalls, isToolFailure, jobCutDecision, keptToolRounds, messageText, planMessages, pointerOnlyText, pointerSpanAllowed, RAIL_TOKENS, readResultLabel, reservedCutEnd, resolveEngine, resolveProviderBaseURL, roundHasLongRead, selectCutIndexes, shadowSections, takeLocalCut, withoutFullBackupClaim } from "./plan.js";
 import { captureOwnedToolResult, contentHash, PRUNE_MARKER, rawExcerptText, rawName, readRawToolResult, restoreToolText, runPruneAfterCapture, verifiedRaw } from "./raw.js";
 import { netGainTooSmall } from "./netgain.js";
-import { cutPolicy, lastPolicyVerdict, resetPolicyVerdict, spanCapFor } from "./policy.js";
+import { cutPolicy, lastPolicyVerdict, mergeSpanCandidates, resetPolicyVerdict, spanCapFor } from "./policy.js";
 import { hostContextNotice } from "./notice.js";
 import {
   ensureShadowDir,
@@ -154,6 +154,11 @@ const PRESTEP_WAIT_TIMEOUT_MS = 3000;
 const SHADOW_WORKER_IDLE_MS = process.platform === "win32" ? 60000 : 500;
 
 const shadowWorkers = new Map();
+
+// 中刀（卡片合并）上一次的判定结果。中刀是「找不到候选」还是「算账不划算」，
+// 以前一律静默返回 null，日志里只剩 no-legal-span，看不出是哪一步卡住的。
+// Last middle-knife verdict, so a silent null still tells the decision log why.
+let lastMergeVerdict = null;
 
 function shadowWorkerFor(root) {
   const key = String(root);
@@ -620,6 +625,8 @@ export { saveShadowImpl as saveShadow };
 // Under settings.chunkMin, return null.
 export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, context = {}) {
   const settings = context.settings ?? readSettings();
+  // 每次选段先清掉上一次的中刀判定，避免把旧结论写进新的决策记录。
+  lastMergeVerdict = null;
   const decision = jobCutDecision(context.jobs || []);
   if (!decision.cut) return null;
   const nodes = session.surface.nodes;
@@ -766,46 +773,94 @@ export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, conte
   if (end >= first && !isCheckpoint(session, nodes[end])) {
     ordinaryPicked = selectCutIndexes(items, cutOptions);
   }
-  // 中刀（卡片合并）：卡片是墙，小刀只能在最新卡之后削。这里从最新的几张卡里挑起点，
-  // 把旧卡连同中间内容重压成一张新卡——一次性拿掉 20k-30k，代价是这一刀会让切点之后的缓存重算一次。
+  // 中刀（卡片合并 / 深切）：卡片是墙，小刀只能在最新卡之后削，于是「头」永远削不动，
+  // 前缀越堆越高。这里从某张旧卡起，把卡片连同中间内容重压成一张新卡。
+  //
+  // 账要算对：切完之后请求里只剩「卡片 + 切点之后的原文」，被切掉的那一段不再进请求。
+  // 所以中刀必须一刀切到尾巴（切点是最后的保留轮），让重算面只剩卡片和几轮尾巴；
+  // 停在半路的截断子段会把「没切完的那半截」也赔进去，昂贵十倍。
+  // 真正的限制是「这段有多长」（chunkMax × mergeMaxSpan），不是「重算面有多小」——
+  // 旧版拿 chunkMax 当墙，长会话里卡片离尾巴动辄十几万 token，于是永远挑不出候选。
+  // 截断子段只作为超长时的兜底，经济学仍由 mergeBreakEven 管；卡片正文要压出来
+  // 才知道成本，所以只压最划算的两个候选。
   if (context.merge === true) {
     const cp = [];
     for (let index = first; index <= end; index += 1) {
       if (isCheckpoint(session, nodes[index])) cp.push(index);
     }
-    if (cp.length) {
-      let best = null;
-      for (let ci = cp.length - 1; ci >= 0; ci -= 1) {
-        const startIndex = cp[ci];
-        const tokens = items.slice(startIndex, end + 1).reduce((sum, item) => sum + item.tokens, 0);
-        if (tokens > settings.chunkMax) break;
-        if (tokens >= settings.chunkMin && cutOk(toolPairingBalancedBefore, session, nodes[startIndex])) {
-          best = { startIndex, tokens };
-        }
-      }
-      if (best) {
-        const pieces = spanPieces(best.startIndex, end);
-        const card = buildCard(pieces.map((piece) => piece.text).join("\n"), liveText(best.startIndex, end), pieces, extras);
-        // 中刀会让「切点之后」的缓存全部重算一次；先算清楚这笔账，不划算就不切。
-        const cardTokens = Math.ceil((card.text || "").length / 3.5);
-        const saved = best.tokens - cardTokens;
-        const prefixTokens = items.slice(0, best.startIndex).reduce((sum, item) => sum + item.tokens, 0);
-        const missTokens = Math.max(0, (Number(context.totalTokens) || 0) - prefixTokens);
-        const breakEven = Number(settings.mergeBreakEven);
-        const affordable = !(Number.isFinite(breakEven) && breakEven > 0 && saved > 0 && missTokens > saved * breakEven);
-        if (card.ok === true && affordable && cutOk(toolPairingBalancedAfter, session, nodes[end])
-            && !netGainTooSmall(best.tokens, card.text, settings.minNetGain)) {
-          let after = 0;
-          for (let index = end + 1; index < priced.length; index += 1) after += priced[index].tokens;
-          let prefix = 0;
-          for (let index = 0; index < best.startIndex; index += 1) prefix += priced[index].tokens;
-          let text = card.text;
-          if (!text.includes("不是备份文件路径")) text += "\n序号是本会话日志里的事件号，不是备份文件路径。";
-          return { start: nodes[best.startIndex], end: nodes[end], tokens: best.tokens, after, keptTokens: 0,
-            card: attachBackupHint({ ...card, text }, freshShadowFile("cut", key)), prefix, merge: true };
-        }
-      }
+    if (!cp.length) {
+      lastMergeVerdict = { reason: "no-card" };
+      return null;
     }
+    // 最近的一张卡离切点还有多远——中刀没出手时，这是最想知道的一个数。
+    const newestCard = cp[cp.length - 1];
+    let newestSpan = 0;
+    for (let index = newestCard; index <= end; index += 1) newestSpan += priced[index].tokens;
+    const breakEven = Number(settings.mergeBreakEven);
+    const totalTokens = Number(context.totalTokens) || 0;
+    // 中刀要把整窗压成一张卡：切点越靠前，切点之后要重算的面越大，所以它必须
+    // 一刀切到尾巴。段长上限单独给一个旋钮（chunkMax × mergeMaxSpan），不再拿
+    // 小刀的 chunkMax 当墙——那正是旧版在长会话里永远挑不出候选的原因。
+    const hardCap = Math.max(spanCap, (Number(settings.chunkMax) || 32000) * Math.max(1, Number(settings.mergeMaxSpan) || 0));
+    const candidates = mergeSpanCandidates({
+      items,
+      cards: cp.reverse(),
+      end,
+      spanCap,
+      hardCap,
+      chunkMin: settings.chunkMin,
+      totalTokens,
+      breakEven,
+      startOk: (index) => cutOk(toolPairingBalancedBefore, session, nodes[index]),
+      stopOk: (index) => cutOk(toolPairingBalancedAfter, session, nodes[index]),
+    });
+    if (!candidates.length) {
+      lastMergeVerdict = { reason: "no-span", cards: cp.length, hardCap,
+        nearestCard: nodes[newestCard], nearestSpan: newestSpan, endSeq: nodes[end] };
+      return null;
+    }
+    const rejected = [];
+    for (const best of candidates.slice(0, 2)) {
+      const spanSeq = { start: nodes[best.startIndex], end: nodes[best.stop] };
+      const pieces = spanPieces(best.startIndex, best.stop);
+      const card = buildCard(pieces.map((piece) => piece.text).join("\n"), liveText(best.startIndex, best.stop), pieces, extras);
+      const cardTokens = Math.ceil((card.text || "").length / 3.5);
+      const saved = best.spanTokens - cardTokens;
+      // 切点之后要重算的是「这张新卡 + 段尾剩下的内容」，被切掉的段不再进请求。
+      const missTokens = best.rewriteTokens + cardTokens;
+      // 中刀会让「切点之后」的缓存重算一次；先算清楚这笔账，不划算就不切。
+      const affordable = !(Number.isFinite(breakEven) && breakEven > 0 && saved > 0 && missTokens > saved * breakEven);
+      if (card.ok !== true) {
+        rejected.push({ ...spanSeq, reason: "card-incomplete", spanTokens: best.spanTokens, cardTokens });
+        continue;
+      }
+      if (!affordable) {
+        rejected.push({
+          ...spanSeq, reason: "breakeven", spanTokens: best.spanTokens, cardTokens, saved,
+          missTokens, rewriteTokens: best.rewriteTokens, breakEven, window: best.window,
+          payback: saved > 0 ? Number((missTokens / saved).toFixed(2)) : null,
+        });
+        continue;
+      }
+      if (netGainTooSmall(best.spanTokens, card.text, settings.minNetGain)) {
+        rejected.push({ ...spanSeq, reason: "netgain", spanTokens: best.spanTokens, cardTokens, saved });
+        continue;
+      }
+      let after = 0;
+      for (let index = best.stop + 1; index < priced.length; index += 1) after += priced[index].tokens;
+      // 整窗切到尾巴时，切点之后的就全是「原处保留的轮次」；截断子段时还有一段
+      // 没切的内容留在后面，那部分必须计入 tailBeyondKept，不能假装它已被保留。
+      let tailRest = 0;
+      for (let index = best.stop + 1; index <= end; index += 1) tailRest += priced[index].tokens;
+      let text = card.text;
+      if (!text.includes("不是备份文件路径")) text += "\n序号是本会话日志里的事件号，不是备份文件路径。";
+      return { start: spanSeq.start, end: spanSeq.end, tokens: best.spanTokens, after,
+        keptTokens: Math.max(0, after - tailRest),
+        card: attachBackupHint({ ...card, text }, freshShadowFile("cut", key)), prefix: best.prefixTokens, merge: true };
+    }
+    lastMergeVerdict = { reason: rejected[0]?.reason || "rejected", cards: cp.length, hardCap,
+      candidates: candidates.length, nearestCard: nodes[newestCard], nearestSpan: newestSpan,
+      ...(rejected[0] || {}) };
     return null;
   }
 
@@ -1837,10 +1892,21 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
             // 记清楚是「没有合法段」还是「被动态回本门槛挡下」，否则日志里全是同一个原因。
             const policy = lastPolicyVerdict();
             const policyNote = policy && !policy.allow
-              ? { policy: policy.reason, payback: policy.payback, netGain: policy.netGain, rewriteTokens: policy.rewriteTokens }
+              ? { policy: policy.reason, payback: policy.payback, netGain: policy.netGain,
+                rewriteTokens: policy.rewriteTokens, spanTokens: policy.spanTokens, cardTokens: policy.cardTokens }
               : {};
             // 小刀没段，但中刀（卡片合并）还没试过。
             if (!drain && pass === 0 && deepEligible && burst > 1 && mergeWindowOpen()) continue;
+            // 中刀试过了却没出手：把「哪一步挡住的」写进日志，否则只看到 no-legal-span。
+            if (lastMergeVerdict) {
+              this.recordDecision(state, {
+                phase: "merge-skip",
+                totalTokens: measured.totalTokens,
+                deepCutAbove: Number(settings.deepCutAbove) || 0,
+                ...lastMergeVerdict,
+              });
+              lastMergeVerdict = null;
+            }
             if (drain && measured.totalTokens > settings.keepRoundTokens) {
               this.recordDecision(state, {
                 phase: "cut-skip",
