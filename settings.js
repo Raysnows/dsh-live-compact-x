@@ -26,6 +26,10 @@ officialCooldownMs: 1200000, // 两次大压缩之间至少隔 20 分钟
 mergeBreakEven: 2, // 中刀盈亏平衡上限：一次性重算 / 每轮省下 超过这个倍数就不切
 
 mergeCooldownMs: 300000, // 两刀中刀之间至少隔 5 分钟
+
+paybackTurns: 0, // >0：一刀的一次性重算 > netGain × 这个轮数就不切（0 = 关，与上游正刀一致）
+
+spanBandRatio: 0, // >0：单刀上限 = 上下文 × 比例，再夹进 chunkMin..chunkMax（0 = 关）
   cooldownMs: 0, // 0 = 只用 seq 一次性跳过
 });
 
@@ -54,6 +58,10 @@ officialCooldownMs: "SPINE_OFFICIAL_COOLDOWN_MS",
 mergeBreakEven: "SPINE_MERGE_BREAK_EVEN",
 
 mergeCooldownMs: "SPINE_MERGE_COOLDOWN_MS",
+
+paybackTurns: "SPINE_PAYBACK_TURNS",
+
+spanBandRatio: "SPINE_SPAN_BAND_RATIO",
 });
 
 // volatile 字段的现值是 cosmokit 的取值对象，读之前先摊平。
@@ -175,6 +183,33 @@ export function configSchema(z, stockSchema) {
       .volatile(),
     cooldownMs: count(0)
       .description("官方压缩之后跳过小切的时间窗；0 = 只按事件序号跳过一次。")
+      .volatile(),
+    minNetGain: count(0)
+      .description("净收益门槛：切掉的量减去卡片剩余，不到这个数就不切。")
+      .volatile(),
+    burstCuts: count(1)
+      .description("一次收尾最多连切几刀（小刀）。")
+      .volatile(),
+    deepCutAbove: count(0)
+      .description("中刀（卡片合并）启用线：上下文超过这个 token 数才试；0 = 关闭。本地测试建议 120000~200000。")
+      .volatile(),
+    officialAbove: count(0)
+      .description("大刀启用线：超过这个 token 数又没有可切小段时，主动请官方压一次；0 = 关闭。")
+      .volatile(),
+    officialCooldownMs: count(0)
+      .description("两次大刀之间至少隔多少毫秒，默认 20 分钟。")
+      .volatile(),
+    mergeBreakEven: count(0)
+      .description("中刀盈亏上限：一次性重算 / 净收益 超过这个倍数就不切。")
+      .volatile(),
+    mergeCooldownMs: count(0)
+      .description("两刀中刀之间的最小间隔毫秒。")
+      .volatile(),
+    paybackTurns: count(0)
+      .description("动态限速：一刀的一次性重算超过 净收益×这个轮数 就不切；0 = 关闭（与上游正刀一致）。")
+      .volatile(),
+    spanBandRatio: count(0)
+      .description("动态刀长：单刀上限 = 上下文 × 这个比例，夹在 chunkMin..chunkMax 之间；0 = 关闭。")
       .volatile(),
   });
 }

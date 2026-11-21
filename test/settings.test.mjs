@@ -1,6 +1,7 @@
 import { readSettings } from "../settings.js";
 let pass = 0, fail = 0;
 const ok = (c, n, x = "") => { if (c) { pass++; console.log("  ok  " + n); } else { fail++; console.log("  FAIL " + n + " " + x); } };
+process.env.SPINE_SETTINGS_FILE = "D:\\deepseek-workspaces\\work\\tmp\\nonexistent-spine-settings.json";
 const d = readSettings({}, {});
 ok(d.deepCutAbove === 0, "中刀默认关闭", String(d.deepCutAbove));
 ok(d.bigGate === 650000, "bigGate 默认 650k", String(d.bigGate));

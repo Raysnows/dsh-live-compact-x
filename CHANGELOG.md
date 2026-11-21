@@ -1,3 +1,12 @@
+# 1.3.8-x.0
+
+- **动态策略层 policy.js（默认全关，等于上游正刀）**：把「切多大、值不值得切」从常量变成函数。
+  - `spanBandRatio`：单刀上限 = 上下文 × 比例，夹在 chunkMin..chunkMax 之间。会话还小的时候不再一刀切掉半壁江山。
+  - `paybackTurns`：一刀的一次性重算（切点之后全部缓存未命中）超过「净收益 × 轮数」就不切。实测 6 刀省 61,252、重算 330,365 —— 只看 saved 会得出错的结论。
+  - 两个旋钮默认 0 = 关闭；关闭时 slice 结果、卡片、日志与 1.3.7 完全一致。决策日志里 `cut-skip` 会带上 `policy/payback/netGain/rewriteTokens`，能分清「没有合法段」和「被回本门槛挡下」。
+- 设置表单补齐 minNetGain / burstCuts / deepCutAbove / officialAbove / officialCooldownMs / mergeBreakEven / mergeCooldownMs / paybackTurns / spanBandRatio 九个字段（原来只有 JSON 文件能改）。
+- 测试：新增 test/policy.test.mjs 21 条（默认零行为变化、夹逼边界、赔本刀被挡、净收益为 0、空入参、日志可读）。
+
 # 1.3.0-x.1
 
 - 大刀/小刀两级：burstCuts（连切 3 刀）、deepCutAbove（跨 user 扩段）、officialAbove（主动请官方大压缩，20 分钟冷却）

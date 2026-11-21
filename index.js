@@ -24,6 +24,7 @@ import { DEFAULTS, engineConfig, readSettings } from "./settings.js";
 import { attachBackupHint, backgroundJobId, backupClaimOk, buildCard, collectJobs, cutLongReadRound, finishedToolRounds, indexToolCalls, isToolFailure, jobCutDecision, keptToolRounds, messageText, planMessages, pointerOnlyText, pointerSpanAllowed, RAIL_TOKENS, readResultLabel, reservedCutEnd, resolveEngine, resolveProviderBaseURL, roundHasLongRead, selectCutIndexes, shadowSections, takeLocalCut, withoutFullBackupClaim } from "./plan.js";
 import { captureOwnedToolResult, contentHash, PRUNE_MARKER, rawExcerptText, rawName, readRawToolResult, restoreToolText, runPruneAfterCapture, verifiedRaw } from "./raw.js";
 import { netGainTooSmall } from "./netgain.js";
+import { cutPolicy, lastPolicyVerdict, resetPolicyVerdict, spanCapFor } from "./policy.js";
 import {
   ensureShadowDir,
   appendDecision,
@@ -728,10 +729,13 @@ export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, conte
       balancedAfter: cutOk(toolPairingBalancedAfter, session, seq),
     };
   });
+  // 动态刀长：0 = 关（等于 chunkMax），>0 时按上下文规模收放，避免在还很小的会话里
+  // 一刀切掉半壁江山、把整条前缀都算成缓存未命中。
+  const spanCap = spanCapFor({ totalTokens: Number(context.totalTokens) || 0, settings });
   const cutOptions = {
     engine: context.engine || "cloud",
     chunkMin: settings.chunkMin,
-    chunkMax: settings.chunkMax,
+    chunkMax: spanCap,
     pointerMax: settings.pointerTokens,
     maxEnd: end,
     totalTokens: context.totalTokens,
@@ -855,7 +859,7 @@ export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, conte
         if (classifications[previous].isGenuineUserBoundary) break;
         if (usedLongCut && previous < longSpan.start) break;
         const nextTokens = expandedTokens + (priced[previous].tokens || 0);
-        if (nextTokens > settings.chunkMax) break;
+        if (nextTokens > spanCap) break;
         const trialPieces = spanPieces(previous, picked.end);
         const trialCard = buildCard(
           trialPieces.map((piece) => piece.text).join("\n"),
@@ -890,6 +894,20 @@ export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, conte
     // 指针卡不备份原文，成本近乎为零，所以只对真卡片设门槛。
     if (!picked.pointerOnly && netGainTooSmall(tokens, card.text, settings.minNetGain)) {
       return null;
+    }
+    // 动态限速（默认关）：这一刀省下的净收益，要能在 paybackTurns 轮内赚回
+    // 「切点之后全部重算」的一次性成本，否则宁可不切。小刀常切在中间段，重算面
+    // 可能远大于省下的量——只盯 saved 会得出错误的结论。
+    if (!picked.pointerOnly) {
+      const prefixTokens = priced.slice(0, start).reduce((sum, item) => sum + (item.tokens || 0), 0);
+      const verdict = cutPolicy({
+        totalTokens: Number(context.totalTokens) || 0,
+        spanTokens: tokens,
+        cardTokens: Math.ceil((card.text || "").length / 3.5),
+        prefixTokens,
+        settings,
+      });
+      if (!verdict.allow) return null;
     }
     if (!cutOk(toolPairingBalancedAfter, session, nodes[candidateEnd])) return null;
     let after = 0;
@@ -1787,6 +1805,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
         };
         // 小刀 + 大刀：drain 时最多 8 刀；平时按 burstCuts 连切（默认 3）。
         const burst = drain ? 8 : Math.max(1, Number(settings.burstCuts) || 1);
+        resetPolicyVerdict();
         for (let pass = 0; pass < burst; pass += 1) {
           const measured = measurement;
           if (drain && measured.totalTokens <= settings.keepRoundTokens) break;
@@ -1804,6 +1823,11 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
             drain,
           });
           if (chunk === null) {
+            // 记清楚是「没有合法段」还是「被动态回本门槛挡下」，否则日志里全是同一个原因。
+            const policy = lastPolicyVerdict();
+            const policyNote = policy && !policy.allow
+              ? { policy: policy.reason, payback: policy.payback, netGain: policy.netGain, rewriteTokens: policy.rewriteTokens }
+              : {};
             // 小刀没段，但中刀（卡片合并）还没试过。
             if (!drain && pass === 0 && deepEligible && burst > 1 && mergeWindowOpen()) continue;
             if (drain && measured.totalTokens > settings.keepRoundTokens) {
@@ -1812,6 +1836,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
                 reason: "no-legal-span",
                 totalTokens: measured.totalTokens,
                 drain: true,
+                ...policyNote,
               });
               this.ctx.logger?.warn?.(`spine drain stopped at ${measured.totalTokens}; no legal span`);
             } else {
@@ -1826,7 +1851,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
                 this.recordDecision(state, { phase: "official-handover", result: "deferred",
                   totalTokens: measured.totalTokens, reason: "no-legal-span-above-line" });
               } else {
-                this.recordDecision(state, { phase: "cut-skip", reason: "no-legal-span", totalTokens: measured.totalTokens, drain: false });
+                this.recordDecision(state, { phase: "cut-skip", reason: "no-legal-span", totalTokens: measured.totalTokens, drain: false, ...policyNote });
                 this.ctx.logger?.debug?.("spine cut skipped");
               }
             }
