@@ -42,6 +42,16 @@ plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.10-x.0")
 所以它买到的是**更晚、更少的大压缩**（少一次整段重算 ≈ 少一次全量缓存未命中），
 不是一套新的摘要算法。想退回官方行为，卸载插件即可。
 
+## 面板：这个会话切了多少
+
+装好后会话页签会多一个**压缩**（在「上下文」和「编队」之间）：
+
+- 累计切掉多少 token（我方卡片 / 官方大压缩分列）、切了几刀；
+- 每一刀一行：类型、切掉的量、事件号范围（`seq a → b`）、时间；展开能看到卡片预览、备份文件名、用的模型；
+- 底部是这个会话的备份目录，目录和文件名都能一键复制，方便去看原文。
+
+数据来自投影 `spine.cuts`（纯同步折叠会话事件），不额外开通道、不读盘；宿主没有这个能力时面板显示一行提示，压缩功能本身不受影响。
+
 ## 配置
 
 优先级：**显式 config > `~/.dsh/spine-settings.json` > 环境变量 > 默认值**。
@@ -101,6 +111,7 @@ plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.10-x.0")
 | 7 | 中刀：从卡片一路切到尾巴，窗口由 mergeMaxSpan 管 | `policy.js`、`index.js` |
 | 8 | 动态策略层：动态刀长 / 回本门槛 | `policy.js` |
 | 9 | 宿主注入的上下文快照不再当用户墙 | `notice.js`、`index.js` |
+| 10 | 压缩面板：会话投影 `spine.cuts` + `conversation.view` 页签 | `projection.js`、`client.js` |
 
 ## 存储模型（v2）
 

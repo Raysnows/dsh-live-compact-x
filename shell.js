@@ -10,6 +10,9 @@ import { loadBase, loadCompaction, loadSchema, STOCK_ENGINE } from "./adapter.js
 import { configSchema, engineConfig } from "./settings.js";
 import { installPresetGate } from "./gate.js";
 import { installPruneHook } from "./v2/prune-hook.js";
+import { spineProjectionDefinition } from "./projection.js";
+import { shadowDirectory } from "./shadow.js";
+import { sessionDir } from "./shadow.js";
 import { defaultV2, v2Enabled } from "./v2/store-switch.js";
 
 let Engine = null;
@@ -128,6 +131,38 @@ export function releaseRootStockCompaction(ctx, { deferDispose = false } = {}) {
   return true;
 }
 
+// 面板数据：把「切过多少/切在哪/卡片文件在哪」做成会话投影，客户端直接读。
+// 服务可选（老宿主没有 sessionProjections），注册失败只影响面板，绝不影响压缩。
+let zod = null;
+try { zod = (await import("zod")).z; } catch {}
+
+function installCutsProjection(ctx) {
+  try {
+    const projections = ctx?.get?.("sessionProjections");
+    if (!projections?.register) return;
+    const definition = spineProjectionDefinition({
+      zod,
+      shadowDir: (sid) => {
+        try { return sessionDir(shadowDirectory(), sid || "__default__"); } catch { return ""; }
+      },
+    });
+    let handle = null;
+    let disposed = false;
+    Promise.resolve(projections.register(definition))
+      .then((registered) => {
+        handle = registered;
+        if (disposed) { try { registered?.dispose?.(); } catch {} }
+      })
+      .catch((error) => ctx?.logger?.debug?.(`spine: cuts projection skipped: ${reasonText(error)}`));
+    ctx?.effect?.(() => () => {
+      disposed = true;
+      try { handle?.dispose?.(); } catch {}
+    }, "spine: cuts projection");
+  } catch (error) {
+    ctx?.logger?.debug?.(`spine: cuts projection unavailable: ${reasonText(error)}`);
+  }
+}
+
 function visibleTakeover(ctx, reason) {
   const line = `spine: ${MARK}。${reason}`;
   console.error(line);
@@ -161,6 +196,7 @@ export default class LiveCompactEntry {
   static Config = Schema || Stock?.Config || Engine?.Config;
 
   constructor(ctx, config) {
+    installCutsProjection(ctx);
     installPresetGate(ctx, config);
     // V2：在被官方修剪器改写之前，把那一小撮原文压一份兜底副本。
     if (v2Enabled()) {
