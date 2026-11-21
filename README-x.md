@@ -1,5 +1,7 @@
 # dsh-live-compact-x
 
+仓库：<https://github.com/1250589385/dsh-live-compact-x> ｜ 当前 commit 见 `git log`
+
 上游 [dsh-live-compact](https://github.com/Tranquillitatis-Lab/dsh-live-compact) 1.1.12 的 fork，只改三处，针对本机实测出来的两个毛病：**碎切** 和 **备份上限过大**。
 
 ## 改了什么
