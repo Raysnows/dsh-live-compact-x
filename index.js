@@ -1763,7 +1763,9 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
               if (due) {
                 state.lastOfficialAt = Date.now();
                 try {
-                  const result = await this.compactNow(agent, op.signal);
+                  // compactNow 要求「空闲 agent」，在 finishTurn 里必然失败；
+                  // 走官方 context-overflow 路径：它跳过阈值检查，直接选一段做摘要。
+                  const result = await super.compactIfNeeded(agent, "context-overflow", op.signal);
                   const afterOfficial = this.ctx.tokenMeter.measure(agent.session).totalTokens;
                   this.recordDecision(state, { phase: "official-handover", result: result ? "ran" : "null",
                     before: measured.totalTokens, after: afterOfficial, reason: "no-legal-span-above-line" });
