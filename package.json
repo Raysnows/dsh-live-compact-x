@@ -1,7 +1,7 @@
 {
   "name": "dsh-live-compact-x",
   "version": "1.3.9-x.0",
-  "description": "DSH 压缩后端 fork：净收益门槛 + 零副本存储（索引 + 日志回读）+ 大刀/小刀两级压缩。取代官方 compaction-basic，可随时卸载。",
+  "description": "DSH 压缩增强：抢在官方 compaction-basic 的阈值之前先切尾巴（净收益门槛 + 零副本存储 + 中刀/大刀），把官方大压缩尽量往后推；官方摘要逻辑原样继承（super 兜底），可随时卸载。",
   "license": "MIT",
   "author": "Raysnows <Raysnows@users.noreply.github.com>",
   "type": "module",
@@ -39,6 +39,7 @@
     "netgain.js",
     "policy.js",
     "notice.js",
+    "icon.svg",
     "v2",
     "REVIEW.md"
   ],
@@ -79,6 +80,7 @@
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2"
   },
   "dsh": {
+    "icon": "./icon.svg",
     "bundle": {
       "patch": "./cordis.patch.yml"
     },

@@ -22,10 +22,23 @@
 ## 安装
 
 ```
-plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.3-x.1")
+plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.9-x.0")
 ```
 
-装完重启宿主。它的 `cordis.patch.yml` 会先禁用官方 `compaction-basic`，再插入自己。
+装完重启宿主。它的 `cordis.patch.yml` 会先禁用官方 `compaction-basic` 的**插件安装位**，再插入自己。
+
+## 和官方 compaction-basic 是什么关系
+
+**不是取代。** 位置确实顶掉了——同一个 context 只能有一个 `ctx.compaction`，所以补丁把官方的插件关掉、换成这个。
+但**压缩逻辑没有换**：
+
+- 本引擎继承官方的 `BasicCompactionEngine`，凡是官方摘要都直接走 `super.compactIfNeeded`；
+  官方那套"整段摘要 + 保留最近若干轮"的行为一行没改。
+- 差别只在**调度**：官方是"到阈值就整段摘"，这个插件先在旁边切几刀，把那条阈值尽量往后推。
+  推不动了才把官方大压缩请出来，压完继续小刀。
+
+所以它买到的是**更晚、更少的大压缩**（少一次整段重算 ≈ 少一次全量缓存未命中），
+不是一套新的摘要算法。想退回官方行为，卸载插件即可。
 
 ## 配置
 
