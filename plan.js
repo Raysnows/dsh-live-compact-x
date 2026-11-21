@@ -1260,6 +1260,38 @@ function checkCoverage({ sources, requiredLines, keptLines }) {
   return { ok: missing.length === 0, keptLines: cleanKept, missing };
 }
 
+/**
+ * 覆盖率兜底：卡片没能逐字抄下的硬事实，用截断摘要 + 指针补进卡片正文。
+ *
+ * 中刀一次要重压几十 k 的整段（往往含七八张旧卡），上游 buildCard 的 Kept 预算
+ * （8000 字符）和逐行覆盖检查根本装不下，于是永远 ok=false，中刀一刀也出不了。
+ * 这里不退化成「静默丢事实」，也不假装通过：把没保住的硬事实按 240 字符截断、
+ * 逐条带序号写进卡片，原文仍在备份里可回读。调用方只对中刀、且在缺失条数
+ * 有限时使用。
+ */
+export function digestMissingFacts(card, { limit = 64, charsPerLine = 240 } = {}) {
+  const missing = Array.isArray(card?.missing) ? card.missing.filter((item) => String(item || "").trim()) : [];
+  if (!missing.length) return { ...card, ok: true, degraded: false, degradedFacts: 0 };
+  const shown = missing.slice(0, Math.max(1, limit));
+  const lines = shown.map((item, index) => {
+    const raw = String(item).replace(/\s+/g, " ").trim();
+    const cut = raw.slice(0, charsPerLine);
+    return `- 未逐字保留（${index + 1}）: ${cut}${raw.length > charsPerLine ? " …" : ""}`;
+  });
+  const head = [
+    "未能逐字抄进卡片的硬事实（按 240 字符截断，完整原文在省略的工具输出备份里；需要时按事件号回读）：",
+    ...lines,
+  ];
+  if (missing.length > shown.length) head.push(`- 另有 ${missing.length - shown.length} 条同类事实未逐字保留。`);
+  return {
+    ...card,
+    ok: true,
+    degraded: true,
+    degradedFacts: missing.length,
+    text: `${card.text}\n\n${head.join("\n")}`,
+  };
+}
+
 function earlierUsers(spans) {
   const users = (spans || []).filter((span) => !span.pluginNotice && sourceRole(span.role) === "user" && span.inCut !== false && String(span.text || "").trim());
   if (!users.length) return "";
@@ -1282,14 +1314,22 @@ export function buildCard(
   const originals = (spans?.length ? spans : [{ role: "other", text: spanText }])
     .filter((source) => source.inCut !== false)
     .map((source, id) => ({ ...source, id, role: sourceRole(source.role), text: String(source.text || "") }));
+  // Kept 预算默认 8000 字符（上游行为）。中刀要一口吃掉几十 k 的整段，硬事实自然更多，
+  // 调用方可以按段长放宽；上限 32000 字符，免得卡片反过来把省下的量吃回去。
+  const requested = Number(extras?.keepBudget);
+  const keepBudget = requested > 0 ? Math.min(32000, Math.max(1000, Math.floor(requested))) : KEEP_BUDGET;
   const live = String(liveText || "").replace(/\r\n/g, "\n");
   const liveLines = new Set(live.split("\n").map((line) => line.trim()).filter(Boolean));
   // 完整原文仍在未切区时不再切它；局部子串不能替硬事实过关。
-  const sources = originals.filter((source) => !source.pluginNotice && (
+  // 宿主注入的上下文快照（时间戳/运行环境/技能目录/system-reminder）不是用户的话，
+  // 也不该占「必须保住」的额度——它们每轮都会被重新注入一次。旧版把它们当用户原文，
+  // 8000 字符的 Kept 预算被这些提醒吃掉，覆盖率检查随之失败，大一点的卡片直接建不出来。
+  const factSource = (source) => !source.pluginNotice && !source.contextNotice;
+  const sources = originals.filter((source) => factSource(source) && (
     !source.text.trim() || !`\n${live.trim()}\n`.includes(`\n${source.text.replace(/\r\n/g, "\n").trim()}\n`)
   ));
   const sourceById = new Map(sources.map((source) => [source.id, source]));
-  const claims = claimSpans(originals.filter((source) => !source.pluginNotice));
+  const claims = claimSpans(originals.filter(factSource));
   const visible = bodySpans(claims);
   const span = visible.map((item) => item.text).join("\n");
   const names = repeatedNames(span);
@@ -1327,7 +1367,7 @@ export function buildCard(
 
   for (const item of hard) {
     if (!sourceById.has(item.sourceId)) continue;
-    if (used + item.line.length > KEEP_BUDGET) {
+    if (used + item.line.length > keepBudget) {
       omittedHard += 1;
       continue;
     }
@@ -1340,7 +1380,7 @@ export function buildCard(
   for (const line of [...new Set(split.covered)]) {
     const source = sourceForLine(line, visible);
     if (keptLines.has(line) || !sourceById.has(source.sourceId)) continue;
-    if (used + line.length > KEEP_BUDGET) {
+    if (used + line.length > keepBudget) {
       deferred += 1;
       continue;
     }

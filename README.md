@@ -125,6 +125,7 @@ node --check index.js
 node test/netgain.test.mjs         # 6/6
 node test/policy.test.mjs          # 21/21
 node test/merge-span.test.mjs      # 34/34
+node test/card-digest.test.mjs     # 16/16
 node test/context-notice.test.mjs  # 17/17
 node v2/test/v2.test.mjs <session.v4.jsonl.zstd>   # 23/23
 node test/wire.test.mjs <session.v4.jsonl.zstd>    # 11/11

@@ -6,8 +6,10 @@
   - **候选**：每张卡各出一个候选（整窗优先，超长退化截断），按划算度排序，只压最划算的两个，省掉无谓的建卡开销。
   - **可观测**：中刀没出手时写 merge-skip 决策，reason 区分 no-card / no-span / breakeven / netgain，并带上 hardCap、nearestCard、nearestSpan、window——以前一律静默返回 null，日志里只剩 no-legal-span，看不出卡在哪一步。
   - **keptTokens**：截断子段后面没切完的内容不再被当成「已保留的轮次」，会计入 tailBeyondKept。
-  - 实测（会话 d608cb07，253k，7 张卡）：旧规则 0 候选；新规则选出 卡 seq 460 → 切点 seq 5354，段 118k、重算约 16k、净赚约 108k。
-  - 测试：新增 test/merge-span.test.mjs 34 条；policy 21 条同步到新口径；全套 120 条通过。
+  - **卡片覆盖兜底**：buildCard 的 Kept 预算固定 8000 字符 + 逐行覆盖否决，一次重压七八张旧卡必然 ok=false（实测 12 万 token 的整窗，预算提到 32000 字符时仍剩 2 条超长行装不下，中刀于是永远 card-incomplete）。现在中刀按段长给预算（段长 × 0.25，上限 32000 字符），还差几条时把缺失硬事实按 240 字符截断、逐条编号补进卡片并标 degraded（原文仍在备份里，可回读）；缺失超过 64 条则宁可不出手。决策日志带 merge / degraded / degradedFacts。
+  - 候选从「只压前两个」放宽到「按划算度试前四个」，不同窗口的覆盖结果不一样。
+  - 实测（会话 d608cb07，253k，7 张卡）：旧规则 0 候选；中途版本选出 卡 seq 460 → 切点 seq 5354，段 118k、重算约 16k、净赚约 108k；最终形态选出 段 119k、卡片约 7.8k、净赚 111k、重算 12k（倍数 0.10），判定为会出手。
+  - 测试：新增 test/merge-span.test.mjs 34 条、test/card-digest.test.mjs 16 条；policy 21 条同步到新口径；全套 136 条通过。
 
 # 1.3.9-x.1
 

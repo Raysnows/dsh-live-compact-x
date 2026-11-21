@@ -21,7 +21,7 @@ import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadBase, loadCompaction, loadLlm } from "./adapter.js";
 import { DEFAULTS, engineConfig, readSettings } from "./settings.js";
-import { attachBackupHint, backgroundJobId, backupClaimOk, buildCard, collectJobs, cutLongReadRound, finishedToolRounds, indexToolCalls, isToolFailure, jobCutDecision, keptToolRounds, messageText, planMessages, pointerOnlyText, pointerSpanAllowed, RAIL_TOKENS, readResultLabel, reservedCutEnd, resolveEngine, resolveProviderBaseURL, roundHasLongRead, selectCutIndexes, shadowSections, takeLocalCut, withoutFullBackupClaim } from "./plan.js";
+import { attachBackupHint, backgroundJobId, backupClaimOk, buildCard, collectJobs, cutLongReadRound, digestMissingFacts, finishedToolRounds, indexToolCalls, isToolFailure, jobCutDecision, keptToolRounds, messageText, planMessages, pointerOnlyText, pointerSpanAllowed, RAIL_TOKENS, readResultLabel, reservedCutEnd, resolveEngine, resolveProviderBaseURL, roundHasLongRead, selectCutIndexes, shadowSections, takeLocalCut, withoutFullBackupClaim } from "./plan.js";
 import { captureOwnedToolResult, contentHash, PRUNE_MARKER, rawExcerptText, rawName, readRawToolResult, restoreToolText, runPruneAfterCapture, verifiedRaw } from "./raw.js";
 import { netGainTooSmall } from "./netgain.js";
 import { cutPolicy, lastPolicyVerdict, mergeSpanCandidates, resetPolicyVerdict, spanCapFor } from "./policy.js";
@@ -820,10 +820,18 @@ export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, conte
       return null;
     }
     const rejected = [];
-    for (const best of candidates.slice(0, 2)) {
+    for (const best of candidates.slice(0, 4)) {
       const spanSeq = { start: nodes[best.startIndex], end: nodes[best.stop] };
       const pieces = spanPieces(best.startIndex, best.stop);
-      const card = buildCard(pieces.map((piece) => piece.text).join("\n"), liveText(best.startIndex, best.stop), pieces, extras);
+      // 段越长，要保住的硬事实越多：Kept 预算按段长放到最多 32000 字符。
+      const keepBudget = Math.min(32000, Math.max(8000, Math.round(best.spanTokens * 0.25)));
+      let card = buildCard(pieces.map((piece) => piece.text).join("\n"), liveText(best.startIndex, best.stop),
+        pieces, { ...extras, keepBudget });
+      // 中刀一次吃掉整段旧卡，覆盖检查常常差几条：用截断摘要兜底，原文仍在备份里。
+      // 缺失太多说明这一刀压不住，宁可不出手。
+      if (card.ok !== true && card.missing?.length && card.missing.length <= 64) {
+        card = digestMissingFacts(card);
+      }
       const cardTokens = Math.ceil((card.text || "").length / 3.5);
       const saved = best.spanTokens - cardTokens;
       // 切点之后要重算的是「这张新卡 + 段尾剩下的内容」，被切掉的段不再进请求。
@@ -1963,6 +1971,9 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
                 drain,
                 pass,
                 engineUsed: passEngine,
+                merge: chunk.merge === true,
+                degraded: chunk.card?.degraded === true,
+                degradedFacts: chunk.card?.degradedFacts || 0,
               });
               drainNotes.push({
                 kind: "cut",
