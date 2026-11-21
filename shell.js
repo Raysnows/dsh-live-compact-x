@@ -9,6 +9,8 @@
 import { loadBase, loadCompaction, loadSchema, STOCK_ENGINE } from "./adapter.js";
 import { configSchema, engineConfig } from "./settings.js";
 import { installPresetGate } from "./gate.js";
+import { installPruneHook } from "./v2/prune-hook.js";
+import { defaultV2, v2Enabled } from "./v2/store-switch.js";
 
 let Engine = null;
 let Stock = null;
@@ -160,6 +162,14 @@ export default class LiveCompactEntry {
 
   constructor(ctx, config) {
     installPresetGate(ctx, config);
+    // V2：在被官方修剪器改写之前，把那一小撮原文压一份兜底副本。
+    if (v2Enabled()) {
+      try {
+        const backend = defaultV2();
+        const pruner = ctx.get?.("toolResultPruner");
+        if (pruner) ctx.effect?.(() => installPruneHook(pruner, backend.fallback), "spine v2: prune hook");
+      } catch {}
+    }
     const previousCompaction = compactionRecord(ctx);
     let cause = loadError;
     let resolvedConfig;

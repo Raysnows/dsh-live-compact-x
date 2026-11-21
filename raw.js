@@ -7,7 +7,9 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
+import { getV2, resetV2, v2Enabled } from "./v2/store-switch.js";
 import {
   discardShadowFiles,
   ensureShadowDir,
@@ -19,6 +21,27 @@ import {
 } from "./shadow.js";
 
 export const PRUNE_MARKER = "[... tool result middle pruned ...]";
+
+// V2：索引 + 日志回读。目录约定：shadow 根旁边放 index.jsonl / fallback/。
+function sessionsRootFor() {
+  return process.env.SPINE_SESSIONS_DIR || join(process.env.DSH_HOME || join(homedir(), ".dsh"), "sessions");
+}
+
+function backendFor(shadowRoot) {
+  return getV2({ shadowRoot, sessionsRoot: sessionsRootFor() });
+}
+
+/** 默认后端：verify/read 没有权力拿到 dir 时用它。 */
+function backendDefault() {
+  const shadowRoot = process.env.SPINE_SHADOW_DIR ||
+    join(process.env.DSH_HOME || join(homedir(), ".dsh"), "compaction-spine", "shadow");
+  return getV2({ shadowRoot, sessionsRoot: sessionsRootFor() });
+}
+
+/** 由会话影子目录名反推 sessionId。 */
+function sessionIdFromDir(dir) {
+  return basename(String(dir || ""));
+}
 
 function transientCaptureError(error) {
   return ["ESHADOWBUSY", "EAGAIN", "EBUSY", "EINTR", "EIO"].includes(error?.code);
@@ -70,7 +93,34 @@ function readExisting(file, toolCallId) {
 
 // Restart recovery is read-only: never manufacture an original from the surface.
 // Resolve only the requested ID, with the same permissions/meta checks as capture.
-export function readRawToolResult({ dir, toolCallId, access = {}, tighten = true }) {
+/**
+ * 写索引，不写正文。失败返回 null 让调用方回到 v1 影子路径（安全网）。
+ */
+function captureV2({ dir, toolCallId, text, turn, name, pathLabel, seq }) {
+  if (!toolCallId) return { ok: false, reason: "missing-id", toolCallId: "" };
+  try {
+    const backend = backendFor(shadowRootForDir(dir));
+    const record = backend.capture({
+      sessionId: sessionIdFromDir(dir),
+      toolCallId,
+      seq,
+      text,
+      label: pathLabel || name || "",
+    });
+    return record; // 失败也交给引擎处理：v2 不再退回 v1 影子路径
+  } catch (error) {
+    return { ok: false, reason: "v2-error", toolCallId, retryable: true, detail: String(error?.message || error) };
+  }
+}
+
+export function readRawToolResult({ dir, toolCallId, access = {}, tighten = true, seq }) {
+  if (v2Enabled()) {
+    try {
+      const backend = backendFor(shadowRootForDir(dir));
+      const record = backend.read({ sessionId: sessionIdFromDir(dir), toolCallId, seq });
+      if (record.ok) return record;
+    } catch {}
+  }
   const file = join(dir, rawName(toolCallId));
   if (!existsSync(file)) return { ok: false, reason: "missing-file", toolCallId };
   if (tighten) {
@@ -84,6 +134,10 @@ export function readRawToolResult({ dir, toolCallId, access = {}, tighten = true
 export function verifiedRaw(record, readFile = readFileSync) {
   const id = record?.toolCallId || "";
   if (!record?.ok || !record.path || !record.sha256 || !id) return { ok: false, toolCallId: id };
+  if (record.kind === "v2") {
+    try { return backendDefault().verify(record); }
+    catch { return { ok: false, toolCallId: id }; }
+  }
   let stored;
   try {
     stored = readFile(record.path);
@@ -122,6 +176,10 @@ export function rawExcerptText(surface, record) {
 // Pruned text with no earlier file is not stored as the original.
 export function captureToolResult(options) {
   const { dir, toolCallId, access = {}, root = shadowRootForDir(dir) } = options;
+  if (v2Enabled()) {
+    const record = captureV2({ ...options, root });
+    if (record) return record;
+  }
   if (!toolCallId) return { ok: false, reason: "missing-id", toolCallId: "" };
   if (!existsSync(join(dir, rawName(toolCallId))) && String(options.text ?? "").includes(PRUNE_MARKER)) {
     return { ok: false, reason: "already-pruned", toolCallId, unrecoverable: true };
@@ -238,6 +296,10 @@ function captureToolResultLocked({
 
 export function captureOwnedToolResult(options) {
   const { dir, access = {}, root = shadowRootForDir(dir) } = options;
+  if (v2Enabled()) {
+    const record = captureV2({ ...options, root });
+    if (record) return record;
+  }
   ensureShadowDir(dir, access);
   return withShadowRoot(root, () => captureOwnedToolResultLocked({ ...options, root }));
 }

@@ -1,6 +1,6 @@
 {
   "name": "dsh-live-compact-x",
-  "version": "1.1.12-x.1",
+  "version": "1.2.0-x.1",
   "description": "In-place newest-turn compaction (fork): adds a net-gain gate so a cut must beat its card cost. Compress while the task runs and keep the prefix.",
   "license": "MIT",
   "author": "MerkyorLynn <268568828+MerkyorLynn@users.noreply.github.com>",
@@ -37,7 +37,10 @@
     "README.md",
     "LICENSE",
     "netgain.js",
-    "README-x.md"
+    "README-x.md",
+    "v2",
+    "REVIEW.md",
+    "tools"
   ],
   "keywords": [
     "dsh-plugin",

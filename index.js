@@ -2197,6 +2197,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
         dir,
         root: shadow,
         toolCallId: id,
+        seq: event.seq,
         text: messageText(event.data?.message),
         turn: event.data?.turn,
         name: call?.name || "",

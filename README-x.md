@@ -57,7 +57,7 @@ node test\netgain.test.mjs      # 6/6
 - 未运行上游 `test/` 全套（需要 devDependencies 的宿主包），只做了语法检查 + netgain 单测；
 - 上游的 37 个 issue 原样继承。
 
-## v2 存储层（已实现，未接线）
+## v2 存储层（已接线，默认开启）
 
 `v2/` 下五个模块，独立可测，目标是把「副本」换成「索引 + 回读」：
 
@@ -73,3 +73,16 @@ node test\netgain.test.mjs      # 6/6
 日志召回 p50 0.157ms。详见 `REVIEW.md`。
 
 接线还没做：`raw.js` 仍走上游影子路径，`package.json` 的 `files` 也还没加 `v2`。
+
+## 存储后端开关
+
+| 变量 | 默认 | 作用 |
+|---|---|---|
+| `SPINE_STORE` | `v2` | 设 `v1` 回到上游影子路径（每个结果写一份正文副本） |
+| `SPINE_SESSIONS_DIR` | `$DSH_HOME/sessions` | 会话日志根；v2 按 `<slug>/<session-id>/session.v4.jsonl.zstd` 回读 |
+| `SPINE_MIN_NET_GAIN` | 3000 | 净收益门槛；0 = 关闭 |
+
+v2 失败一律 fail-closed：找不到会话日志就返回 `missing-session-log`，不写影子文件、不碰 ACL。
+被官方修剪器改写的正文，由 `prune-hook` 在改写前压一份进 `<shadow>/../fallback/`。
+
+回滚：设 `SPINE_STORE=v1` 重启；或卸载插件。
