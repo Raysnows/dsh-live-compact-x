@@ -771,7 +771,14 @@ export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, conte
       if (best) {
         const pieces = spanPieces(best.startIndex, end);
         const card = buildCard(pieces.map((piece) => piece.text).join("\n"), liveText(best.startIndex, end), pieces, extras);
-        if (card.ok === true && cutOk(toolPairingBalancedAfter, session, nodes[end])
+        // 中刀会让「切点之后」的缓存全部重算一次；先算清楚这笔账，不划算就不切。
+        const cardTokens = Math.ceil((card.text || "").length / 3.5);
+        const saved = best.tokens - cardTokens;
+        const prefixTokens = items.slice(0, best.startIndex).reduce((sum, item) => sum + item.tokens, 0);
+        const missTokens = Math.max(0, (Number(context.totalTokens) || 0) - prefixTokens);
+        const breakEven = Number(settings.mergeBreakEven);
+        const affordable = !(Number.isFinite(breakEven) && breakEven > 0 && saved > 0 && missTokens > saved * breakEven);
+        if (card.ok === true && affordable && cutOk(toolPairingBalancedAfter, session, nodes[end])
             && !netGainTooSmall(best.tokens, card.text, settings.minNetGain)) {
           let after = 0;
           for (let index = end + 1; index < priced.length; index += 1) after += priced[index].tokens;
@@ -1773,6 +1780,11 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
         const drain = cloud && (projected || last >= URGENT_TOKENS);
         const drainNotes = [];
         let maintenanceFailed = false;
+        // 中刀冷却：一次中刀之后 5 分钟内不再合并，避免连续触发缓存重算。
+        const mergeWindowOpen = () => {
+          const cd = Number(settings.mergeCooldownMs) || 0;
+          return Date.now() - (Number(state.lastMergeAt) || 0) >= cd;
+        };
         // 小刀 + 大刀：drain 时最多 8 刀；平时按 burstCuts 连切（默认 3）。
         const burst = drain ? 8 : Math.max(1, Number(settings.burstCuts) || 1);
         for (let pass = 0; pass < burst; pass += 1) {
@@ -1784,7 +1796,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
           const chunk = selectNewestChunk(agent.session, measured, state.key, {
             settings,
             engine: passEngine,
-            merge: pass > 0 && deepEligible,
+            merge: pass > 0 && deepEligible && mergeWindowOpen(),
             jobs,
             calls,
             rawLookup: (id) => this.rawSeen.get(`${state.key}\0${id}`),
@@ -1793,7 +1805,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
           });
           if (chunk === null) {
             // 小刀没段，但中刀（卡片合并）还没试过。
-            if (!drain && pass === 0 && deepEligible && burst > 1) continue;
+            if (!drain && pass === 0 && deepEligible && burst > 1 && mergeWindowOpen()) continue;
             if (drain && measured.totalTokens > settings.keepRoundTokens) {
               this.recordDecision(state, {
                 phase: "cut-skip",
@@ -1837,6 +1849,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
             const after = measurement.totalTokens;
             reduced = after < before;
             const saved = before - after;
+            if (chunk.merge) state.lastMergeAt = Date.now();
             if (saved > 0) {
               this.recordDecision(state, {
                 phase: "cut",
