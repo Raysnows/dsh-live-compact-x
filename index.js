@@ -1679,15 +1679,9 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
           const gateLast = Number(state.lastOfficialAt) || 0;
           if (measurement.totalTokens >= settings.bigGate && gateOfficial > 0 && Date.now() - gateLast >= gateCooldown) {
             state.lastOfficialAt = Date.now();
-            try {
-              const result = await super.compactIfNeeded(agent, "context-overflow", op.signal);
-              const after = this.ctx.tokenMeter.measure(agent.session).totalTokens;
-              this.recordDecision(state, { phase: "official-handover", result: result ? "ran" : "null",
-                before: measurement.totalTokens, after, reason: "above-big-gate" });
-              measurement = this.ctx.tokenMeter.measure(agent.session);
-            } catch (error) {
-              this.recordDecision(state, { phase: "official-handover", result: "failed", reason: String(error?.message || error), reason_at: "above-big-gate" });
-            }
+            state.handoverPending = "above-big-gate";
+            this.recordDecision(state, { phase: "official-handover", result: "deferred",
+              totalTokens: measurement.totalTokens, reason: "above-big-gate" });
           }
           this.recordDecision(state, {
             phase: "maintenance-skip",
@@ -1778,18 +1772,9 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
               const due = officialAbove > 0 && measured.totalTokens >= officialAbove && Date.now() - lastOfficial >= cooldown;
               if (due) {
                 state.lastOfficialAt = Date.now();
-                try {
-                  // compactNow 要求「空闲 agent」，在 finishTurn 里必然失败；
-                  // 走官方 context-overflow 路径：它跳过阈值检查，直接选一段做摘要。
-                  const result = await super.compactIfNeeded(agent, "context-overflow", op.signal);
-                  const afterOfficial = this.ctx.tokenMeter.measure(agent.session).totalTokens;
-                  this.recordDecision(state, { phase: "official-handover", result: result ? "ran" : "null",
-                    before: measured.totalTokens, after: afterOfficial, reason: "no-legal-span-above-line" });
-                  measurement = this.ctx.tokenMeter.measure(agent.session);
-                  if (result) { drainNotes.push({ kind: "official", saved: measured.totalTokens - afterOfficial }); }
-                } catch (error) {
-                  this.recordDecision(state, { phase: "official-handover", result: "failed", reason: String(error?.message || error) });
-                }
+                state.handoverPending = "no-legal-span-above-line";
+                this.recordDecision(state, { phase: "official-handover", result: "deferred",
+                  totalTokens: measured.totalTokens, reason: "no-legal-span-above-line" });
               } else {
                 this.recordDecision(state, { phase: "cut-skip", reason: "no-legal-span", totalTokens: measured.totalTokens, drain: false });
                 this.ctx.logger?.debug?.("spine cut skipped");
@@ -2069,6 +2054,21 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
     this.ensurePruneGuard();
     const owned = this.ownedSignal(signal);
     try {
+      // 大刀：上一轮截尾时排的队，在下一轮 pre-step 里执行——自动压缩事件必须落在 turn 内，
+      // 在 finishTurn 里调 compactRegion 会报 "no open turn"。
+      if (state.handoverPending) {
+        const why = state.handoverPending;
+        state.handoverPending = null;
+        const before = this.ctx.tokenMeter.measure(agent.session).totalTokens;
+        try {
+          const result = await super.compactIfNeeded(agent, "context-overflow", owned.signal);
+          const after = this.ctx.tokenMeter.measure(agent.session).totalTokens;
+          this.recordDecision(state, { phase: "official-handover", result: result ? "ran" : "null", before, after, reason: why });
+          if (result) return result;
+        } catch (error) {
+          this.recordDecision(state, { phase: "official-handover", result: "failed", reason: String(error?.message || error), reason_at: why });
+        }
+      }
       return await super.compactIfNeeded(agent, trigger, owned.signal);
     } finally {
       owned.dispose?.();
