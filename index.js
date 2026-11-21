@@ -751,6 +751,42 @@ export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, conte
   if (end >= first && !isCheckpoint(session, nodes[end])) {
     ordinaryPicked = selectCutIndexes(items, cutOptions);
   }
+  // 中刀（卡片合并）：卡片是墙，小刀只能在最新卡之后削。这里从最新的几张卡里挑起点，
+  // 把旧卡连同中间内容重压成一张新卡——一次性拿掉 20k-30k，代价是这一刀会让切点之后的缓存重算一次。
+  if (context.merge === true) {
+    const cp = [];
+    for (let index = first; index <= end; index += 1) {
+      if (isCheckpoint(session, nodes[index])) cp.push(index);
+    }
+    if (cp.length) {
+      let best = null;
+      for (let ci = cp.length - 1; ci >= 0; ci -= 1) {
+        const startIndex = cp[ci];
+        const tokens = items.slice(startIndex, end + 1).reduce((sum, item) => sum + item.tokens, 0);
+        if (tokens > settings.chunkMax) break;
+        if (tokens >= settings.chunkMin && cutOk(toolPairingBalancedBefore, session, nodes[startIndex])) {
+          best = { startIndex, tokens };
+        }
+      }
+      if (best) {
+        const pieces = spanPieces(best.startIndex, end);
+        const card = buildCard(pieces.map((piece) => piece.text).join("\n"), liveText(best.startIndex, end), pieces, extras);
+        if (card.ok === true && cutOk(toolPairingBalancedAfter, session, nodes[end])
+            && !netGainTooSmall(best.tokens, card.text, settings.minNetGain)) {
+          let after = 0;
+          for (let index = end + 1; index < priced.length; index += 1) after += priced[index].tokens;
+          let prefix = 0;
+          for (let index = 0; index < best.startIndex; index += 1) prefix += priced[index].tokens;
+          let text = card.text;
+          if (!text.includes("不是备份文件路径")) text += "\n序号是本会话日志里的事件号，不是备份文件路径。";
+          return { start: nodes[best.startIndex], end: nodes[end], tokens: best.tokens, after, keptTokens: 0,
+            card: attachBackupHint({ ...card, text }, freshShadowFile("cut", key)), prefix, merge: true };
+        }
+      }
+    }
+    return null;
+  }
+
   const candidates = [];
   const addCandidate = (candidate, usedLongCut) => {
     if (!candidate || candidates.some((item) => item.candidate === candidate)) return;
@@ -1748,7 +1784,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
           const chunk = selectNewestChunk(agent.session, measured, state.key, {
             settings,
             engine: passEngine,
-            deep: pass > 0 && deepEligible,
+            merge: pass > 0 && deepEligible,
             jobs,
             calls,
             rawLookup: (id) => this.rawSeen.get(`${state.key}\0${id}`),
@@ -1756,6 +1792,8 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
             drain,
           });
           if (chunk === null) {
+            // 小刀没段，但中刀（卡片合并）还没试过。
+            if (!drain && pass === 0 && deepEligible && burst > 1) continue;
             if (drain && measured.totalTokens > settings.keepRoundTokens) {
               this.recordDecision(state, {
                 phase: "cut-skip",
@@ -1912,7 +1950,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
         checkpoint: isCheckpoint(session, seq),
       }));
       const floor = items.findLastIndex(item => item.checkpoint);
-      if (start <= floor || !pointerSpanAllowed(items, start, end, this.engineFor(agent).engine)) {
+      if ((!chunk.merge && start <= floor) || (!chunk.merge && !pointerSpanAllowed(items, start, end, this.engineFor(agent).engine))) {
         throw new Error("spine: selected span violates checkpoint or user boundary");
       }
       if (!cutOk(toolPairingBalancedBefore, session, chunk.start) || !cutOk(toolPairingBalancedAfter, session, chunk.end)) {
