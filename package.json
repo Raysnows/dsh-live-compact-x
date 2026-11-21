@@ -1,9 +1,9 @@
 {
   "name": "dsh-live-compact-x",
-  "version": "1.3.2-x.1",
+  "version": "1.3.3-x.1",
   "description": "DSH 压缩后端 fork：净收益门槛 + 零副本存储（索引 + 日志回读）+ 大刀/小刀两级压缩。取代官方 compaction-basic，可随时卸载。",
   "license": "MIT",
-  "author": "MerkyorLynn <268568828+MerkyorLynn@users.noreply.github.com>",
+  "author": "Raysnows <Raysnows@users.noreply.github.com>",
   "type": "module",
   "main": "shell.js",
   "bin": {
@@ -37,7 +37,6 @@
     "README.md",
     "LICENSE",
     "netgain.js",
-    "README-x.md",
     "v2",
     "REVIEW.md"
   ],
@@ -98,5 +97,12 @@
   "homepage": "https://github.com/Raysnows/dsh-live-compact-x#readme",
   "bugs": {
     "url": "https://github.com/Raysnows/dsh-live-compact-x/issues"
-  }
+  },
+  "contributors": [
+    {
+      "name": "MerkyorLynn",
+      "url": "https://github.com/Tranquillitatis-Lab/dsh-live-compact",
+      "comment": "original dsh-live-compact (MIT)"
+    }
+  ]
 }
