@@ -736,6 +736,7 @@ export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, conte
     maxEnd: end,
     totalTokens: context.totalTokens,
     drain: context.drain === true,
+    deep: context.deep === true,
     urgentTokens: URGENT_TOKENS,
   };
   let longPicked = null;
@@ -1726,12 +1727,18 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
         const drain = cloud && (projected || last >= URGENT_TOKENS);
         const drainNotes = [];
         let maintenanceFailed = false;
-        for (let pass = 0; pass < 8; pass += 1) {
+        // 小刀 + 大刀：drain 时最多 8 刀；平时按 burstCuts 连切（默认 3）。
+        const burst = drain ? 8 : Math.max(1, Number(settings.burstCuts) || 1);
+        for (let pass = 0; pass < burst; pass += 1) {
           const measured = measurement;
           if (drain && measured.totalTokens <= settings.keepRoundTokens) break;
+          // 上下文够大时，后续刀允许跨过早先 user 消息（大刀），单刀上限仍是 chunkMax。
+          const deepEligible = !drain && Number(settings.deepCutAbove) > 0 && measured.totalTokens >= Number(settings.deepCutAbove);
+          const passEngine = pass === 0 ? resolved.engine : deepEligible ? "cloud" : resolved.engine;
           const chunk = selectNewestChunk(agent.session, measured, state.key, {
             settings,
-            engine: resolved.engine,
+            engine: passEngine,
+            deep: pass > 0 && deepEligible,
             jobs,
             calls,
             rawLookup: (id) => this.rawSeen.get(`${state.key}\0${id}`),
@@ -1748,8 +1755,27 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
               });
               this.ctx.logger?.warn?.(`spine drain stopped at ${measured.totalTokens}; no legal span`);
             } else {
-              this.recordDecision(state, { phase: "cut-skip", reason: "no-legal-span", totalTokens: measured.totalTokens, drain: false });
-              this.ctx.logger?.debug?.("spine cut skipped");
+              // 大刀：没有可切小段、又高过大压线时，主动请官方摘要压一次。
+              const officialAbove = Number(settings.officialAbove) || 0;
+              const cooldown = Number(settings.officialCooldownMs) || 0;
+              const lastOfficial = Number(state.lastOfficialAt) || 0;
+              const due = officialAbove > 0 && measured.totalTokens >= officialAbove && Date.now() - lastOfficial >= cooldown;
+              if (due) {
+                state.lastOfficialAt = Date.now();
+                try {
+                  const result = await this.compactNow(agent, op.signal);
+                  const afterOfficial = this.ctx.tokenMeter.measure(agent.session).totalTokens;
+                  this.recordDecision(state, { phase: "official-handover", result: result ? "ran" : "null",
+                    before: measured.totalTokens, after: afterOfficial, reason: "no-legal-span-above-line" });
+                  measurement = this.ctx.tokenMeter.measure(agent.session);
+                  if (result) { drainNotes.push({ kind: "official", saved: measured.totalTokens - afterOfficial }); }
+                } catch (error) {
+                  this.recordDecision(state, { phase: "official-handover", result: "failed", reason: String(error?.message || error) });
+                }
+              } else {
+                this.recordDecision(state, { phase: "cut-skip", reason: "no-legal-span", totalTokens: measured.totalTokens, drain: false });
+                this.ctx.logger?.debug?.("spine cut skipped");
+              }
             }
             break;
           }
@@ -1779,6 +1805,8 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
                 saved,
                 tokens: chunk.tokens,
                 drain,
+                pass,
+                engineUsed: passEngine,
               });
               drainNotes.push({
                 kind: "cut",
@@ -1811,7 +1839,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
             this.ctx.logger?.warn?.(`spine cut did not reduce ${before}; leaving the prefix for the gate`);
             break;
           }
-          if (!drain) break;
+          if (!drain && pass + 1 >= burst) break;
         }
         if (drainNotes.length) flushDrainStats(shadowDirectory(), drainNotes, { sid: state.key, drain });
         state.turnBase = measurement.totalTokens;

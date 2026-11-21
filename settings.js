@@ -1,4 +1,7 @@
 /** 设置系统 */
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 /** 用户可调项。默认值与 1.1.1 的行为完全一致：不配置就一切照旧。 */
 export const DEFAULTS = Object.freeze({
@@ -11,6 +14,14 @@ export const DEFAULTS = Object.freeze({
   bigGate: 650000, // 绝对停切线
 
 minNetGain: 3000, // 净收益门槛：切掉 - 卡片 < 这个数就不切
+
+burstCuts: 3, // 一次收尾最多连切几刀（小刀；非 drain 会话以前只切一刀）
+
+deepCutAbove: 200000, // 超过这个 token 数，允许一刀跨过早先的 user 消息（大刀，最多 32k）
+
+officialAbove: 0, // >0：超过这个 token 数且没有可切小段时，主动调一次官方大压缩（0 = 关）
+
+officialCooldownMs: 1200000, // 两次大压缩之间至少隔 20 分钟
   cooldownMs: 0, // 0 = 只用 seq 一次性跳过
 });
 
@@ -25,6 +36,14 @@ export const ENV = Object.freeze({
   cooldownMs: "SPINE_COOLDOWN_MS",
 
 minNetGain: "SPINE_MIN_NET_GAIN",
+
+burstCuts: "SPINE_BURST_CUTS",
+
+deepCutAbove: "SPINE_DEEP_CUT_ABOVE",
+
+officialAbove: "SPINE_OFFICIAL_ABOVE",
+
+officialCooldownMs: "SPINE_OFFICIAL_COOLDOWN_MS",
 });
 
 // volatile 字段的现值是 cosmokit 的取值对象，读之前先摊平。
@@ -76,7 +95,18 @@ const finite = (value) => {
   return Number.isFinite(number) ? number : undefined;
 };
 
+/** 文件层设置：~/.dsh/spine-settings.json，优先级在显式 config 之下、环境变量之上。 */
+function fileSettings() {
+  try {
+    const file = process.env.SPINE_SETTINGS_FILE || join(process.env.DSH_HOME || join(homedir(), ".dsh"), "spine-settings.json");
+    return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+  } catch {
+    return {};
+  }
+}
+
 export function readSettings(config = {}, env = process.env) {
+  const file = fileSettings();
   const next = {};
   for (const [key, fallback] of Object.entries(DEFAULTS)) {
     const envName = ENV[key];
@@ -85,7 +115,7 @@ export function readSettings(config = {}, env = process.env) {
       return key === "keepRounds" && (!Number.isInteger(number) || number < 1) ? undefined : number;
     };
     next[key] =
-      numeric(config?.[key]) ?? numeric(envName ? env?.[envName] : undefined) ?? fallback;
+      numeric(config?.[key]) ?? numeric(file?.[key]) ?? numeric(envName ? env?.[envName] : undefined) ?? fallback;
   }
   if (!next.pointerTokens) next.pointerTokens = next.chunkMax;
   return Object.freeze(next);

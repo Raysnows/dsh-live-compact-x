@@ -891,6 +891,7 @@ export function selectCutIndexes(items, {
   maxEnd = null,
   totalTokens,
   drain = false,
+  deep = false, // true：允许跨过最后一条 user 往前切（大刀），仍保留最近轮次
   urgentTokens = 48000,
 } = {}) {
   if (!items?.length) return null;
@@ -930,7 +931,8 @@ export function selectCutIndexes(items, {
   const phase = expandBack(items, end, lowerBound, { crossUser: false, chunkMax });
   // First prefer the newest phase after the latest user boundary.
   // Prefer the newest phase after the latest user boundary.
-  if (phase.gain >= chunkMin) {
+  // 大刀：跳过「只切最新 phase」，直接走 retreat + crossUser 扩段。
+  if (!deep && phase.gain >= chunkMin) {
     if (phase.tokens <= chunkMax && balanced(items, phase.start, phase.end)
         && !(lastUser >= phase.start && lastUser <= phase.end)) return phase;
     return null;
