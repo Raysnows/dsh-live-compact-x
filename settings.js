@@ -35,6 +35,8 @@ export const ENV = Object.freeze({
   chunkMax: "SPINE_CHUNK_MAX",
   cooldownMs: "SPINE_COOLDOWN_MS",
 
+bigGate: "SPINE_BIG_GATE",
+
 minNetGain: "SPINE_MIN_NET_GAIN",
 
 burstCuts: "SPINE_BURST_CUTS",
