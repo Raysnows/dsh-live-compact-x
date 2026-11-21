@@ -1,3 +1,10 @@
+# 1.3.9-x.0
+
+- **修复「一次没压」**：DSH 每轮/每 N 步会以 user/message 注入时间戳、运行环境、技能目录快照。旧规则把它们当成最新的用户边界，而本地模式的小刀必须切在最后一条用户消息之后 —— 切点永远落在墙左边，实测一个 142k、55 步的会话**一次都没压**。
+  - 新增 notice.js：只认宿主的三个确切 source.kind + form（time-context / runtime-context / skill-catalog）。未知来源、伪造 form、缺 source 一律仍按用户墙处理，第三方插件不能借道。
+  - 新增 strictHostContext（默认 0）：设 1 退回旧行为。
+  - 测试 test/context-notice.test.mjs 13 条，含 A/B 复现：旧规则 null，新规则切出 31,500 tokens。
+
 # 1.3.8-x.0
 
 - **动态策略层 policy.js（默认全关，等于上游正刀）**：把「切多大、值不值得切」从常量变成函数。

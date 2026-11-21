@@ -30,6 +30,8 @@ mergeCooldownMs: 300000, // 两刀中刀之间至少隔 5 分钟
 paybackTurns: 0, // >0：一刀的一次性重算 > netGain × 这个轮数就不切（0 = 关，与上游正刀一致）
 
 spanBandRatio: 0, // >0：单刀上限 = 上下文 × 比例，再夹进 chunkMin..chunkMax（0 = 关）
+
+strictHostContext: 0, // 1 = 退回旧行为，把宿主注入的上下文快照也当成用户墙（默认 0：它们不是用户的话）
   cooldownMs: 0, // 0 = 只用 seq 一次性跳过
 });
 
@@ -62,6 +64,8 @@ mergeCooldownMs: "SPINE_MERGE_COOLDOWN_MS",
 paybackTurns: "SPINE_PAYBACK_TURNS",
 
 spanBandRatio: "SPINE_SPAN_BAND_RATIO",
+
+strictHostContext: "SPINE_STRICT_HOST_CONTEXT",
 });
 
 // volatile 字段的现值是 cosmokit 的取值对象，读之前先摊平。
@@ -210,6 +214,9 @@ export function configSchema(z, stockSchema) {
       .volatile(),
     spanBandRatio: count(0)
       .description("动态刀长：单刀上限 = 上下文 × 这个比例，夹在 chunkMin..chunkMax 之间；0 = 关闭。")
+      .volatile(),
+    strictHostContext: count(0)
+      .description("0 = 宿主注入的上下文快照（时间/环境/技能目录）不算用户墙，小刀才切得动；1 = 退回旧行为。")
       .volatile(),
   });
 }

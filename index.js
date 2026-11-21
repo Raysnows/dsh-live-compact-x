@@ -25,6 +25,7 @@ import { attachBackupHint, backgroundJobId, backupClaimOk, buildCard, collectJob
 import { captureOwnedToolResult, contentHash, PRUNE_MARKER, rawExcerptText, rawName, readRawToolResult, restoreToolText, runPruneAfterCapture, verifiedRaw } from "./raw.js";
 import { netGainTooSmall } from "./netgain.js";
 import { cutPolicy, lastPolicyVerdict, resetPolicyVerdict, spanCapFor } from "./policy.js";
+import { hostContextNotice } from "./notice.js";
 import {
   ensureShadowDir,
   appendDecision,
@@ -467,12 +468,19 @@ function eventRole(session, seq) {
   return "other";
 }
 
+// 宿主每步注入的上下文快照（时间戳、运行环境、技能目录）也是 user/message 事件。
+// 它们不是用户的话，但按旧规则会被当成「最新的用户边界」——本地模式的切点必须落在
+// 最后一条用户消息之后，于是每注入一次，小刀就再也切不动了（实测 142k 一次没压）。
+// 只认宿主的三个确切 source.kind + form，未知来源仍然按墙处理；strictHostContext=1 可退回旧行为。
+// DSH injects context snapshots as user/message events. They are not user instructions,
+// but the legacy rule treated them as the newest user boundary, which silently froze every
+// local cut. Only these exact host kinds qualify; anything unknown stays a hard boundary.
 // progress-rules 0.2.1's pre-step contract, not a general notice permission.
 // Session source metadata does not authenticate producer identity. Unknown/extra metadata
 // stays a boundary; neither body text nor the raw role is used as a substitute. A real
 // user event that is not the complete contract is therefore a hard boundary for the
 // cloud fallback path; only a fully validated plugin notice may be crossed there.
-function classifyUserEvent(session, seq) {
+export function classifyUserEvent(session, seq, strictHostContext = false) {
   const event = session.eventAt(seq);
   const data = event?.data;
   const source = data?.source;
@@ -490,10 +498,12 @@ function classifyUserEvent(session, seq) {
     && Array.isArray(content) && content.length === 1
     && content[0]?.type === "text" && typeof content[0].text === "string"
     && Object.keys(content[0]).length === 2;
+  const contextNotice = strictHostContext ? false : hostContextNotice(event, source);
   return {
     pluginNotice,
+    contextNotice,
     untrustedNotice: event?.type === "user/message" && !pluginNotice,
-    isGenuineUserBoundary: event?.type === "user/message" && !pluginNotice,
+    isGenuineUserBoundary: event?.type === "user/message" && !pluginNotice && !contextNotice,
   };
 }
 
@@ -615,7 +625,8 @@ export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, conte
   const nodes = session.surface.nodes;
   const priced = measurement.nodes;
   if (nodes.length === 0 || nodes.length !== priced.length) return null;
-  const classifications = nodes.map((seq) => classifyUserEvent(session, seq));
+  const strictHostContext = Number(settings.strictHostContext) > 0;
+  const classifications = nodes.map((seq) => classifyUserEvent(session, seq, strictHostContext));
   const first = session.eventAt(nodes[0])?.type === "system/message" ? 1 : 0;
   let end = priced.length - 1;
   let floorCard = -1;
@@ -1982,9 +1993,10 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
       if (expected && (selected.length !== expected.length || selected.some((seq, i) => seq !== expected[i]))) {
         throw new Error("spine: selected span changed before commit");
       }
+      const strictHostContext = Number(readSettings(this.liveConfig).strictHostContext) > 0;
       const items = nodes.map(seq => ({
         type: session.eventAt(seq)?.type === "user/message" ? "user" : "other",
-        ...classifyUserEvent(session, seq),
+        ...classifyUserEvent(session, seq, strictHostContext),
         checkpoint: isCheckpoint(session, seq),
       }));
       const floor = items.findLastIndex(item => item.checkpoint);
