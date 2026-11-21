@@ -1673,6 +1673,22 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
           state.maxTurnGrowth = 0;
         };
         if (measurement.totalTokens < settings.minTokens || measurement.totalTokens >= settings.bigGate) {
+          // 死区（>= bigGate）：小切停，但大刀还能出手——否则上下文会一直挂在这里不动。
+          const gateOfficial = Number(settings.officialAbove) || 0;
+          const gateCooldown = Number(settings.officialCooldownMs) || 0;
+          const gateLast = Number(state.lastOfficialAt) || 0;
+          if (measurement.totalTokens >= settings.bigGate && gateOfficial > 0 && Date.now() - gateLast >= gateCooldown) {
+            state.lastOfficialAt = Date.now();
+            try {
+              const result = await super.compactIfNeeded(agent, "context-overflow", op.signal);
+              const after = this.ctx.tokenMeter.measure(agent.session).totalTokens;
+              this.recordDecision(state, { phase: "official-handover", result: result ? "ran" : "null",
+                before: measurement.totalTokens, after, reason: "above-big-gate" });
+              measurement = this.ctx.tokenMeter.measure(agent.session);
+            } catch (error) {
+              this.recordDecision(state, { phase: "official-handover", result: "failed", reason: String(error?.message || error), reason_at: "above-big-gate" });
+            }
+          }
           this.recordDecision(state, {
             phase: "maintenance-skip",
             reason: measurement.totalTokens < settings.minTokens ? "below-min-tokens" : "above-big-gate",
