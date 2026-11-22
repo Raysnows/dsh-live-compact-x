@@ -396,6 +396,29 @@ window.__ModuleLoader__.load({
       },
     ];
 
+    /**
+     * 打开面板要停在最上面。会话视图和聊天共用宿主那个滚动容器，聊天通常停在底部，
+     * 切过来就继承了那个偏移；自己的根也可能是滚动容器。挂载时把沿路能滚的都归零。
+     */
+    function resetScroll(node) {
+      let el = node;
+      let depth = 0;
+      while (el && depth < 6) {
+        try {
+          const style = typeof getComputedStyle === "function" ? getComputedStyle(el) : null;
+          const overflowY = style ? String(style.overflowY || "") : "";
+          if ((overflowY === "auto" || overflowY === "scroll") && el.scrollTop !== 0) el.scrollTop = 0;
+        } catch {}
+        el = el.parentElement;
+        depth += 1;
+      }
+    }
+
+    /** 根节点的 ref：每次挂载（也就是每次切到这个页签）都回到顶部。 */
+    function rootRef(node) {
+      if (node) resetScroll(node);
+    }
+
     function num(value) {
       const n = Number(value);
       return Number.isFinite(n) ? n : 0;
@@ -637,7 +660,7 @@ window.__ModuleLoader__.load({
           }, t("spine.scopeAll"))),
         h("span", { className: "sp-topbar-sub" }, subtitle));
       if (!state) {
-        return h("div", { className: "sp-root" }, topbar,
+        return h("div", { className: "sp-root", ref: rootRef }, topbar,
           h("div", { className: "sp-empty" }, t("spine.unavailable")));
       }
       // 计数优先用投影给的累计值（不吃 40 刀上限）；没有就按当前时间线自己算。
@@ -866,7 +889,7 @@ window.__ModuleLoader__.load({
             t("spine.debugCounts") + " " + JSON.stringify({ kinds: counterKinds, savedBy })),
           h("pre", { className: "sp-path", style: { margin: 0, whiteSpace: "pre-wrap" } },
             t("spine.debugSettings") + " " + JSON.stringify(settings))));
-      return h("div", { className: "sp-root" },
+      return h("div", { className: "sp-root", ref: rootRef },
         topbar,
         h("div", { className: "sp-grid" }, kpis),
         composition,
@@ -910,7 +933,7 @@ window.__ModuleLoader__.load({
       } catch (error) {
         // 渲染期抛错会把整条槽位条目打成空白：兜底成一条可见提示，别让人看到白屏。
         console.error('spine: panel render failed', error);
-        return h("div", { className: "sp-root" },
+        return h("div", { className: "sp-root", ref: rootRef },
           h("div", { className: "sp-card" },
             h("div", { className: "sp-card-title" }, t("spine.knobs")),
             h("div", { className: "sp-empty" }, t("spine.error") + " " + String(error && error.message ? error.message : error))));

@@ -309,6 +309,27 @@ console.log("9b. 切点卡：默认收起、有默认档/自定义档");
   ok(model3.edits.length === 15, "默认档写满 15 个旋钮（" + model3.edits.length + "）");
 }
 
+console.log("9c. 打开就回到最上面");
+{
+  // 假 DOM：根节点套在一个滚到一半的宿主容器里
+  const host = { scrollTop: 900, parentElement: null, style: { overflowY: "auto" } };
+  const root = { scrollTop: 400, parentElement: host, style: { overflowY: "auto" } };
+  globalThis.getComputedStyle = (el) => ({ overflowY: (el && el.style && el.style.overflowY) || "visible" });
+  const ref = tree && tree.props && typeof tree.props.ref === "function" ? tree.props.ref : null;
+  ok(typeof ref === "function", "根节点挂了 ref");
+  if (ref) {
+    ref(root);
+    ok(root.scrollTop === 0, "自己的滚动容器归零");
+    ok(host.scrollTop === 0, "宿主那个滚动容器也归零（聊天停在底部时不继承）");
+    const plain = { scrollTop: 5, parentElement: null, style: { overflowY: "visible" } };
+    ref(plain);
+    ok(plain.scrollTop === 5, "不可滚动的元素不动它");
+    ref(null);
+    ok(true, "ref(null) 不抛错");
+  }
+  delete globalThis.getComputedStyle;
+}
+
 console.log("10. 计数不受时间线长度影响");
 {
   // 时间线只留最近几刀，但累计计数是投影给的：视图要按计数算，不能拿时间线长度充数。
