@@ -28,7 +28,22 @@
 plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.17-x.0")
 ```
 
-也可以直接用 npm 装：`npm i dsh-live-compact-x@1.3.17-x.0`（想跟 beta 通道就写 `@beta`）。装完重启宿主。它的 `cordis.patch.yml` 会先禁用官方 `compaction-basic` 的**插件安装位**，再插入自己。
+也可以直接用 npm 装：`npm i dsh-live-compact-x@1.3.17-x.1`（想跟 beta 通道就写 `@beta`）。装完重启宿主。它的 `cordis.patch.yml` 会先禁用官方 `compaction-basic` 的**插件安装位**，再插入自己。
+
+### 推荐配合 `dsh-context` 一起用
+
+[**`dsh-context`**](https://github.com/bowenliang123/dsh-context)（作者 **bowenliang123**）是上下文洞察插件：把「这段上下文由什么组成、是怎么长出来的」摊成一张仪表盘，另带 `context` 命令随手查。
+
+两个插件回答的是不同问题，不重叠：
+
+- `dsh-context`：**里面有什么**——系统提示、卡片、工具结果、尾巴各占多少，什么时候涨起来的；
+- 本插件：**该不该切、切了多少、省了多少**——净收益、回本轮数、这一刀之后缓存重算了多少。
+
+先看清构成，再来这里调刀法与阈值，判断才有依据。所以：**配合 `dsh-context` 使用观感更佳**。
+
+```
+plugin_manager: install_bundle(target: "dsh-context")
+```
 
 ## 和官方 compaction-basic 是什么关系
 
