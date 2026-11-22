@@ -86,6 +86,7 @@ window.__ModuleLoader__.load({
       "spine.timeline": "切点时间线",
       "spine.empty": "还没有切开过任何内容。上下文变大后，小刀会先在这里记一笔。",
       "spine.unavailable": "宿主没有提供压缩统计（插件未接管，或宿主版本较旧）。",
+      "spine.error": "面板渲染出错：",
       "spine.kindMine": "小刀",
       "spine.kindOfficial": "官方",
       "spine.files": "备份文件",
@@ -136,6 +137,7 @@ window.__ModuleLoader__.load({
       "spine.timeline": "Cut timeline",
       "spine.empty": "Nothing has been cut yet. Once the context grows, the first cut appears here.",
       "spine.unavailable": "The host does not serve compaction stats (plugin not active, or an older host).",
+      "spine.error": "Panel render failed: ",
       "spine.kindMine": "knife",
       "spine.kindOfficial": "official",
       "spine.files": "Backup files",
@@ -204,6 +206,14 @@ window.__ModuleLoader__.load({
       ".sp-group:last-child{margin-bottom:0}",
       ".sp-group-title{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-bottom:6px}",
       ".sp-group-title::after{content:'';flex:1;height:1px;background:var(--dsw-alias-border-l2)}",
+      ".sp-field{display:flex;flex-direction:column;gap:4px;min-width:0}",
+      ".sp-field-head{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary)}",
+      ".sp-tag{font-size:10px;padding:0 5px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);white-space:nowrap}",
+      ".sp-field-row{display:flex;align-items:center;gap:6px}",
+      ".sp-input{font:inherit;font-size:12px;width:100%;box-sizing:border-box;padding:3px 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
+      ".sp-input:focus{border-color:var(--dsw-alias-state-business-primary);outline:none}",
+      ".sp-input:disabled{opacity:.5}",
+      ".sp-field-hint{font-size:10.5px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-secondary));overflow-wrap:anywhere}",
       ".sp-empty{color:var(--dsw-alias-label-secondary);text-align:center;padding:16px 0;font-size:12px}",
       ".sp-foot{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:2px;flex-wrap:wrap}",
       ".sp-path{font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all}",
@@ -281,6 +291,33 @@ window.__ModuleLoader__.load({
         props.hint ? h("div", { className: "sp-kpi-hint" }, props.hint) : null);
     }
 
+    /**
+     * 自己的旋钮输入。文档明确：不要把宿主原语组件（SettingsValueField 之类）
+     * 放进自己的槽位里——它一旦抛错，整个槽位条目就变成空白。这里只借配置表单模型
+     * 的读写面，控件自己画。
+     */
+    function KnobInput(props) {
+      const { t, label, hint, disabled, overridden, value, onEdit, onReset } = props;
+      const [text, setText] = React.useState(String(value ?? ""));
+      return h("label", { className: "sp-field" },
+        h("div", { className: "sp-field-head" },
+          h("span", null, label),
+          overridden ? h("span", { className: "sp-tag" }, t("overridden")) : null),
+        h("div", { className: "sp-field-row" },
+          h("input", {
+            className: "sp-input",
+            type: "number",
+            value: text,
+            disabled,
+            onChange: (event) => {
+              setText(event.target.value);
+              onEdit(event.target.value);
+            },
+          }),
+          overridden ? h("button", { className: "sp-btn", disabled, onClick: onReset }, t("reset")) : null),
+        hint ? h("div", { className: "sp-field-hint" }, hint) : null);
+    }
+
     function CutRow(props) {
       const { cut, t, dir, index } = props;
       const color = CUT_COLOR[cut.kind] || "inherit";
@@ -308,87 +345,98 @@ window.__ModuleLoader__.load({
 
     function SpinePanel(props) {
       const t = props.t;
-      const state = typeof props.useProjection === "function" ? props.useProjection(SPINE_KEY) : undefined;
-      const [, setTick] = React.useState(0);
-      const bump = () => setTick((value) => value + 1);
-      const model = props.model;
-      const actions = props.actions || {};
-      if (!state) return h("div", { className: "sp-root" }, h("div", { className: "sp-empty" }, t("spine.unavailable")));
-      const cuts = Array.isArray(state.cuts) ? state.cuts : [];
-      const stats = summarizeCuts(cuts);
-      const segments = barSegments(cuts);
-      const rows = cuts.map((cut, index) => ({ cut, index: index + 1 })).reverse();
-      const shell = model && typeof model.shell === "function" ? model.shell() : {};
-      const knob = (name) => {
-        const label = LABELS[name] || [name, ""];
-        return h(SettingsValueField, {
-          key: name,
-          id: "spine-knob-" + name,
-          label: label[0],
-          hint: label[1],
-          numeric: true,
-          disabled: !shell.writable || shell.saving,
-          overriddenLabel: t("overridden"),
-          resetLabel: t("reset"),
-          invalidLabel: t("invalid"),
-          ...(model ? model.field(name) : {}),
-          onEdit: (text) => { actions.edit?.(name, text); bump(); },
-          onReset: () => { actions.resetField?.(name); bump(); },
-        });
+      const build = () => {
+        const t = props.t;
+        const state = typeof props.useProjection === "function" ? props.useProjection(SPINE_KEY) : undefined;
+        const [, setTick] = React.useState(0);
+        const bump = () => setTick((value) => value + 1);
+        const model = props.model;
+        const actions = props.actions || {};
+        if (!state) return h("div", { className: "sp-root" }, h("div", { className: "sp-empty" }, t("spine.unavailable")));
+        const cuts = Array.isArray(state.cuts) ? state.cuts : [];
+        const stats = summarizeCuts(cuts);
+        const segments = barSegments(cuts);
+        const rows = cuts.map((cut, index) => ({ cut, index: index + 1 })).reverse();
+        const shell = model && typeof model.shell === "function" ? model.shell() : {};
+        const knob = (name) => {
+          const label = LABELS[name] || [name, ""];
+          const field = model && typeof model.field === "function" ? (() => { try { return model.field(name) || {}; } catch { return {}; } })() : {};
+          return h(KnobInput, {
+            key: name,
+            t,
+            label: label[0],
+            hint: label[1],
+            disabled: !shell.writable || shell.saving,
+            overridden: Boolean(field.overridden),
+            value: field.value,
+            onEdit: (text) => { actions.edit?.(name, text); bump(); },
+            onReset: () => { actions.resetField?.(name); bump(); },
+          });
+        };
+        return h("div", { className: "sp-root" },
+          h("div", { className: "sp-grid" },
+            h(Kpi, { label: t("spine.saved"), value: fmtTokens(stats.total), hint: t("spine.savedHint"), color: "#6F9FE8" }),
+            h(Kpi, { label: t("spine.count"), value: String(stats.count), hint: t("spine.average") + " " + fmtTokens(stats.average) }),
+            h(Kpi, { label: t("spine.mine"), value: String(stats.spineCount), hint: fmtTokens(stats.spineTokens) + " " + t("spine.tokensShort") }),
+            h(Kpi, { label: t("spine.official"), value: String(stats.officialCount), hint: fmtTokens(stats.officialTokens) + " " + t("spine.tokensShort") }),
+            h(Kpi, { label: t("spine.biggest"), value: stats.biggest ? fmtTokens(stats.biggest.tokens) : "—", hint: stats.biggest ? "seq " + stats.biggest.start + "→" + stats.biggest.end : t("spine.none") }),
+            h(Kpi, { label: t("spine.last"), value: stats.last ? fmtClock(stats.last.time) : "—", hint: stats.last ? fmtTokens(stats.last.tokens) : t("spine.none") })),
+          h("div", { className: "sp-card" },
+            h("div", { className: "sp-card-title" }, t("spine.composition"),
+              h("span", { className: "sp-card-sub" }, t("spine.files") + " " + String(stats.files))),
+            segments.length
+              ? h("div", { className: "sp-bar" }, segments.map((segment, index) => h("div", {
+                key: segment.cut.id + "-" + index,
+                className: "sp-seg",
+                style: { width: segment.width + "%", background: segment.color },
+                title: (segment.cut.kind === "spine" ? t("spine.kindMine") : t("spine.kindOfficial")) + " −" + fmtTokens(segment.cut.tokens) + " (seq " + segment.cut.start + "→" + segment.cut.end + ")",
+              })))
+              : h("div", { className: "sp-empty" }, t("spine.empty")),
+            segments.length
+              ? h("div", { className: "sp-legend" },
+                h("span", null, h("span", { className: "sp-dot", style: { background: CUT_COLOR.spine } }), t("spine.kindMine"), " ", fmtTokens(stats.spineTokens)),
+                h("span", null, h("span", { className: "sp-dot", style: { background: CUT_COLOR.official } }), t("spine.kindOfficial"), " ", fmtTokens(stats.officialTokens)))
+              : null),
+          h("div", { className: "sp-card" },
+            h("div", { className: "sp-card-title" }, t("spine.timeline"),
+              h("span", { className: "sp-card-sub" }, fmtTokens(stats.total) + " · " + String(stats.count) + " " + t("spine.cutsUnit"))),
+            rows.length
+              ? h("div", null,
+                h("div", { className: "sp-head" },
+                  h("span", { className: "sp-num" }, "#"),
+                  h("span", null, t("spine.colKind")),
+                  h("span", null, t("spine.colTokens")),
+                  h("span", null, t("spine.colSeq")),
+                  h("span", null, t("spine.colModel")),
+                  h("span", null, t("spine.colTime")),
+                  h("span", { className: "sp-num" }, t("spine.colFiles"))),
+                rows.slice(0, 60).map((row) => h(CutRow, { key: row.cut.id + "-" + row.index, cut: row.cut, index: row.index, t, dir: state.shadowDir })))
+              : h("div", { className: "sp-empty" }, t("spine.empty"))),
+          h("div", { className: "sp-card" },
+            h("div", { className: "sp-card-title" }, t("spine.knobs"),
+              h("span", { className: "sp-card-sub" }, shell.writable ? t("spine.knobsHint") : t("spine.readOnly")),
+              h("button", { className: "sp-btn sp-btn-primary", disabled: !shell.writable || shell.saving, onClick: () => { actions.save?.(); bump(); } }, shell.saving ? t("saving") : t("save")),
+              h("button", { className: "sp-btn", disabled: !shell.writable || shell.saving, onClick: () => { actions.discard?.(); bump(); } }, t("discard"))),
+            KNOB_GROUPS.map((group) => h("div", { key: group.id, className: "sp-group" },
+              h("div", { className: "sp-group-title" }, group.title),
+              h("div", { className: "sp-fields" }, group.keys.map(knob))))),
+          state.shadowDir
+            ? h("div", { className: "sp-foot" },
+              h("span", null, t("spine.dirLabel")),
+              h("code", { className: "sp-path" }, state.shadowDir),
+              h("button", { className: "sp-btn", onClick: () => copyText(state.shadowDir) }, t("spine.copyDir")))
+            : null);
       };
-      return h("div", { className: "sp-root" },
-        h("div", { className: "sp-grid" },
-          h(Kpi, { label: t("spine.saved"), value: fmtTokens(stats.total), hint: t("spine.savedHint"), color: "#6F9FE8" }),
-          h(Kpi, { label: t("spine.count"), value: String(stats.count), hint: t("spine.average") + " " + fmtTokens(stats.average) }),
-          h(Kpi, { label: t("spine.mine"), value: String(stats.spineCount), hint: fmtTokens(stats.spineTokens) + " " + t("spine.tokensShort") }),
-          h(Kpi, { label: t("spine.official"), value: String(stats.officialCount), hint: fmtTokens(stats.officialTokens) + " " + t("spine.tokensShort") }),
-          h(Kpi, { label: t("spine.biggest"), value: stats.biggest ? fmtTokens(stats.biggest.tokens) : "—", hint: stats.biggest ? "seq " + stats.biggest.start + "→" + stats.biggest.end : t("spine.none") }),
-          h(Kpi, { label: t("spine.last"), value: stats.last ? fmtClock(stats.last.time) : "—", hint: stats.last ? fmtTokens(stats.last.tokens) : t("spine.none") })),
-        h("div", { className: "sp-card" },
-          h("div", { className: "sp-card-title" }, t("spine.composition"),
-            h("span", { className: "sp-card-sub" }, t("spine.files") + " " + String(stats.files))),
-          segments.length
-            ? h("div", { className: "sp-bar" }, segments.map((segment, index) => h("div", {
-              key: segment.cut.id + "-" + index,
-              className: "sp-seg",
-              style: { width: segment.width + "%", background: segment.color },
-              title: (segment.cut.kind === "spine" ? t("spine.kindMine") : t("spine.kindOfficial")) + " −" + fmtTokens(segment.cut.tokens) + " (seq " + segment.cut.start + "→" + segment.cut.end + ")",
-            })))
-            : h("div", { className: "sp-empty" }, t("spine.empty")),
-          segments.length
-            ? h("div", { className: "sp-legend" },
-              h("span", null, h("span", { className: "sp-dot", style: { background: CUT_COLOR.spine } }), t("spine.kindMine"), " ", fmtTokens(stats.spineTokens)),
-              h("span", null, h("span", { className: "sp-dot", style: { background: CUT_COLOR.official } }), t("spine.kindOfficial"), " ", fmtTokens(stats.officialTokens)))
-            : null),
-        h("div", { className: "sp-card" },
-          h("div", { className: "sp-card-title" }, t("spine.timeline"),
-            h("span", { className: "sp-card-sub" }, fmtTokens(stats.total) + " · " + String(stats.count) + " " + t("spine.cutsUnit"))),
-          rows.length
-            ? h("div", null,
-              h("div", { className: "sp-head" },
-                h("span", { className: "sp-num" }, "#"),
-                h("span", null, t("spine.colKind")),
-                h("span", null, t("spine.colTokens")),
-                h("span", null, t("spine.colSeq")),
-                h("span", null, t("spine.colModel")),
-                h("span", null, t("spine.colTime")),
-                h("span", { className: "sp-num" }, t("spine.colFiles"))),
-              rows.slice(0, 60).map((row) => h(CutRow, { key: row.cut.id + "-" + row.index, cut: row.cut, index: row.index, t, dir: state.shadowDir })))
-            : h("div", { className: "sp-empty" }, t("spine.empty"))),
-        h("div", { className: "sp-card" },
-          h("div", { className: "sp-card-title" }, t("spine.knobs"),
-            h("span", { className: "sp-card-sub" }, shell.writable ? t("spine.knobsHint") : t("spine.readOnly")),
-            h("button", { className: "sp-btn sp-btn-primary", disabled: !shell.writable || shell.saving, onClick: () => { actions.save?.(); bump(); } }, shell.saving ? t("saving") : t("save")),
-            h("button", { className: "sp-btn", disabled: !shell.writable || shell.saving, onClick: () => { actions.discard?.(); bump(); } }, t("discard"))),
-          KNOB_GROUPS.map((group) => h("div", { key: group.id, className: "sp-group" },
-            h("div", { className: "sp-group-title" }, group.title),
-            h("div", { className: "sp-fields" }, group.keys.map(knob))))),
-        state.shadowDir
-          ? h("div", { className: "sp-foot" },
-            h("span", null, t("spine.dirLabel")),
-            h("code", { className: "sp-path" }, state.shadowDir),
-            h("button", { className: "sp-btn", onClick: () => copyText(state.shadowDir) }, t("spine.copyDir")))
-          : null);
+      try {
+        return build();
+      } catch (error) {
+        // 渲染期抛错会把整条槽位条目打成空白：兜底成一条可见提示，别让人看到白屏。
+        console.error('spine: panel render failed', error);
+        return h('div', { className: 'sp-root' },
+          h('div', { className: 'sp-card' },
+            h('div', { className: 'sp-card-title' }, t('spine.knobs')),
+            h('div', { className: 'sp-empty' }, t('spine.error') + ' ' + String(error && error.message ? error.message : error))));
+      }
     }
 
 
@@ -481,16 +529,23 @@ window.__ModuleLoader__.load({
           }
         }
         const panelActions = model.actions();
-        ctx.effect(() => ctx.slots.inject("conversation.view", () => ctx.slots.register(
-          {
-            name: "conversation.view",
-            id: "dsh-live-compact-x#cuts",
-            order: 25,
-            locale: "liveCompact",
-            label: () => t("tab.spine"),
-          },
-          (props) => h(SpinePanel, { ...props, t, model, actions: panelActions }),
-        )), "live-compact: cuts panel");
+        // 面板注册也包一层：面板挂不上绝不连累设置页。
+        ctx.effect(() => {
+          try {
+            ctx.slots.inject("conversation.view", () => ctx.slots.register(
+              {
+                name: "conversation.view",
+                id: "dsh-live-compact-x#cuts",
+                order: 25,
+                locale: "liveCompact",
+                label: () => t("tab.spine"),
+              },
+              (props) => h(SpinePanel, { ...props, t, model, actions: panelActions }),
+            ));
+          } catch (error) {
+            ctx.logger?.debug?.("spine: cuts panel registration skipped: " + String(error?.message ?? error));
+          }
+        }, "live-compact: cuts panel");
       },
       // 只是给本地测试用的出口；加载器只认 inject / apply。
       __test: { summarizeCuts, barSegments, fmtTokens, fmtClock, SpinePanel, SPINE_CSS },

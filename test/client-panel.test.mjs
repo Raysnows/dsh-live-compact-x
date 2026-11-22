@@ -86,8 +86,8 @@ const walk = (node, visit) => {
   if (typeof node === "string" || typeof node === "number") { visit({ kind: "text", value: String(node) }); return; }
   if (Array.isArray(node)) { for (const item of node) walk(item, visit); return; }
   if (typeof node !== "object") return;
-  if (typeof node.type === "function") { walk(node.type(node.props || {}), visit); return; }
   visit({ kind: "node", node });
+  if (typeof node.type === "function") { walk(node.type(node.props || {}), visit); return; }
   for (const child of node.children || []) walk(child, visit);
 };
 const texts = (tree) => { const out = []; walk(tree, (n) => { if (n.kind === "text") out.push(n.value); }); return out.join(" "); };
@@ -100,12 +100,16 @@ ok(text.includes("64.0k"), "KPI 显示累计切掉：" + text.slice(0, 80));
 ok(text.includes("21.3k"), "平均显示成 21.3k");
 const empty = T.SpinePanel({ t: (key) => key, useProjection: () => undefined });
 ok(texts(empty).includes("spine.unavailable"), "没有投影时给提示而不是崩");
+ok(!texts(tree).includes("SettingsValueField"), "面板不渲染宿主原语组件（它抛错会把槽位打成空白）");
+const throwing = { shell() { throw new Error("boom"); } };
+const errTree = T.SpinePanel({ t: (key) => key, useProjection: () => fakeState, model: throwing, actions });
+ok(texts(errTree).includes("spine.error") && texts(errTree).includes("boom"), "渲染出错时给可见提示而不是空白");
 let rows = 0; let knobs = 0; let saveBtn = null;
 walk(tree, (entry) => {
   const n = entry.node;
   if (!n) return;
   if (n.props?.className === "sp-row") rows += 1;
-  if (n.props?.id && String(n.props.id).startsWith("spine-knob-")) knobs += 1;
+  if (typeof n.type === "function" && n.type.name === "KnobInput") knobs += 1;
   if (n.props?.className === "sp-btn sp-btn-primary") saveBtn = n;
 });
 ok(rows === 3, "时间线三行（" + rows + "）");
