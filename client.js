@@ -124,16 +124,21 @@ window.__ModuleLoader__.load({
       "spine.scopeHintAll": "全部会话累计",
       "spine.knifeSmall": "小刀",
       "spine.knifeMerge": "中刀",
-      "spine.knifeOfficial": "大刀（官方）",
+      "spine.knifeBig": "大刀",
+      "spine.knifeOfficial": "官方",
       "spine.knifePlugin": "旧卡片",
-      "spine.knifeShortOfficial": "大刀",
+      "spine.knifeShortBig": "大刀",
+      "spine.knifeShortOfficial": "官方",
       "spine.knifeShortPlugin": "旧卡",
+      "spine.knifeBigHint": "本插件请官方摘要接手，算我们的刀",
+      "spine.knifeOfficialHint": "插件接管前后的原生压缩",
       "spine.knifeStats": "刀法统计",
       "spine.colKnife": "刀法",
       "spine.colCount": "刀数",
       "spine.colSaved": "切掉",
       "spine.colShare": "占比",
       "spine.colAvg": "平均",
+      "spine.knifeNote": "小刀、中刀、大刀都是本插件切的（大刀借用官方摘要）；官方 = 插件接管之前或让位时的原生压缩，旧卡片 = 早期没记刀名的卡。",
       "spine.experimental": "实验性",
       "spine.enableMid": "启用中刀（合并整张卡片，默认关闭）",
       "spine.groupSmallHint": "抢在官方压缩之前先切尾巴，一行内容都不丢。",
@@ -219,16 +224,21 @@ window.__ModuleLoader__.load({
       "spine.scopeHintAll": "All sessions",
       "spine.knifeSmall": "Small cut",
       "spine.knifeMerge": "Merge cut",
+      "spine.knifeBig": "Big cut",
       "spine.knifeOfficial": "Official",
       "spine.knifePlugin": "Legacy card",
-      "spine.knifeShortOfficial": "Official",
-      "spine.knifeShortPlugin": "Legacy",
+      "spine.knifeShortBig": "big",
+      "spine.knifeShortOfficial": "official",
+      "spine.knifeShortPlugin": "legacy",
+      "spine.knifeBigHint": "The plugin asked the official summarizer to take over",
+      "spine.knifeOfficialHint": "Native compaction outside the plugin",
       "spine.knifeStats": "Knife stats",
       "spine.colKnife": "knife",
       "spine.colCount": "cuts",
       "spine.colSaved": "cut",
       "spine.colShare": "share",
       "spine.colAvg": "avg",
+      "spine.knifeNote": "Small, merge, and big cuts are all ours (big borrows the official summarizer). Official = native compaction before takeover or while standing down; legacy = early cards without a knife label.",
       "spine.experimental": "experimental",
       "spine.enableMid": "Enable the merge cut (joins whole cards, off by default)",
       "spine.groupSmallHint": "Cuts the tail before official compaction, dropping nothing.",
@@ -326,17 +336,26 @@ window.__ModuleLoader__.load({
       ".sp-doclabel{font-size:11px;color:var(--dsw-alias-label-secondary)}",
       ".sp-doclink{color:var(--dsw-alias-state-business-primary);text-decoration:none}",
       ".sp-detail-row{display:grid;grid-template-columns:88px 1fr auto;gap:8px;align-items:center;font-size:11.5px}",
+      ".sp-note{margin-top:8px;padding-top:7px;border-top:1px dashed var(--dsw-alias-border-l2);font-size:10.5px;line-height:1.6;color:var(--dsw-alias-label-secondary)}",
     ].join("\n");
-    const KNIFE_ORDER = ["small", "merge", "official", "plugin"];
-    const KNIFE_COLOR = { small: "#6F9FE8", merge: "#9B7BE8", official: "#E0A35E", plugin: "#6FBFA8" };
+    // 五类刀法：小刀 / 中刀 / 大刀 都是本插件动的手（大刀借用官方摘要），
+    // 官方是插件接管前后的原生压缩，旧卡片是我们早期没记刀名的卡。
+    const KNIFE_ORDER = ["small", "merge", "big", "official", "plugin"];
+    const KNIFE_COLOR = {
+      small: "#6F9FE8", merge: "#9B7BE8", big: "#E0A35E", official: "#8A8F98", plugin: "#6FBFA8",
+    };
     const KNIFE_LABEL = {
-      small: "spine.knifeSmall", merge: "spine.knifeMerge", official: "spine.knifeOfficial", plugin: "spine.knifePlugin",
+      small: "spine.knifeSmall", merge: "spine.knifeMerge", big: "spine.knifeBig",
+      official: "spine.knifeOfficial", plugin: "spine.knifePlugin",
     };
     /** 时间线徽标只有 70px 宽，用短名；完整名放在悬停提示里。 */
     const KNIFE_SHORT = {
-      small: "spine.knifeSmall", merge: "spine.knifeMerge", official: "spine.knifeShortOfficial", plugin: "spine.knifeShortPlugin",
+      small: "spine.knifeSmall", merge: "spine.knifeMerge", big: "spine.knifeShortBig",
+      official: "spine.knifeShortOfficial", plugin: "spine.knifeShortPlugin",
     };
-    const EMPTY_KINDS = { small: 0, merge: 0, plugin: 0, official: 0 };
+    /** 自己人：小刀、中刀、大刀、旧卡片；官方不算。 */
+    const OURS = ["small", "merge", "big", "plugin"];
+    const EMPTY_KINDS = { small: 0, merge: 0, plugin: 0, big: 0, official: 0 };
     const SEP = String.fromCharCode(92);
     /** 打开中刀时写进 deepCutAbove 的默认门槛：上下文超过 12 万 token 才试。 */
     const MID_ON = 120000;
@@ -416,8 +435,8 @@ window.__ModuleLoader__.load({
         if (Array.isArray(cut.rawNames)) files += cut.rawNames.length;
         if (!biggest || num(biggest.tokens) < tokens) biggest = cut;
       }
-      const mine = byKind.small.cuts + byKind.merge.cuts + byKind.plugin.cuts;
-      const mineSaved = byKind.small.saved + byKind.merge.saved + byKind.plugin.saved;
+      const mine = OURS.reduce((sum, kind) => sum + byKind[kind].cuts, 0);
+      const mineSaved = OURS.reduce((sum, kind) => sum + byKind[kind].saved, 0);
       return {
         count: list.length,
         total,
@@ -615,16 +634,15 @@ window.__ModuleLoader__.load({
         ? { ...EMPTY_KINDS, ...(state.kinds || {}) }
         : {
           small: derived.byKind.small.cuts, merge: derived.byKind.merge.cuts,
-          plugin: derived.byKind.plugin.cuts, official: derived.byKind.official.cuts,
+          big: derived.byKind.big.cuts, plugin: derived.byKind.plugin.cuts, official: derived.byKind.official.cuts,
         };
       const savedBy = hasCounters
         ? { ...EMPTY_KINDS, ...(state.savedBy || {}) }
         : {
           small: derived.byKind.small.saved, merge: derived.byKind.merge.saved,
-          plugin: derived.byKind.plugin.saved, official: derived.byKind.official.saved,
+          big: derived.byKind.big.saved, plugin: derived.byKind.plugin.saved, official: derived.byKind.official.saved,
         };
-      const rows = KNIFE_ORDER
-        .filter((kind) => !all || kind !== "plugin")
+      const rows = (all ? ["small", "merge", "big"] : KNIFE_ORDER)
         .map((kind) => {
           const stat = all
             ? { cuts: num(allKnives[kind] && allKnives[kind].cuts), saved: num(allKnives[kind] && allKnives[kind].saved) }
@@ -661,7 +679,13 @@ window.__ModuleLoader__.load({
         : [
           h(Kpi, { key: "saved", label: t("spine.saved"), value: fmtTokens(totalSaved), hint: t("spine.savedHint"), color: "#6F9FE8" }),
           h(Kpi, { key: "count", label: t("spine.count"), value: String(totalCuts), hint: t("spine.average") + " " + fmtTokens(totalCuts ? Math.round(totalSaved / totalCuts) : 0) }),
-          h(Kpi, { key: "mine", label: t("spine.mine"), value: String(num(counterKinds.small) + num(counterKinds.merge) + num(counterKinds.plugin)), hint: t("spine.knifeSmall") + " " + String(num(counterKinds.small)) + " · " + t("spine.knifeMerge") + " " + String(num(counterKinds.merge)) }),
+          h(Kpi, {
+            key: "mine",
+            label: t("spine.mine"),
+            value: String(OURS.reduce((sum, kind) => sum + num(counterKinds[kind]), 0)),
+            hint: t("spine.knifeSmall") + num(counterKinds.small) + " " + t("spine.knifeMerge") + num(counterKinds.merge)
+              + " " + t("spine.knifeBig") + num(counterKinds.big),
+          }),
           h(Kpi, { key: "official", label: t("spine.official"), value: String(num(counterKinds.official)), hint: fmtTokens(savedBy.official) + " " + t("spine.tokensShort") }),
           h(Kpi, {
             key: "biggest",
@@ -691,6 +715,7 @@ window.__ModuleLoader__.load({
         h("div", { className: "sp-card-title" }, t("spine.knifeStats"),
           h("span", { className: "sp-card-sub" }, all ? t("spine.scopeHintAll") : t("spine.scopeHintNow"))),
         h(KnifeTable, { t, rows, total: totalSaved }),
+        all ? null : h("div", { className: "sp-note" }, t("spine.knifeNote")),
         all
           ? h("div", { className: "sp-foot" },
             h("span", null, t("spine.attempts") + " " + String(num(attempts.cut))),

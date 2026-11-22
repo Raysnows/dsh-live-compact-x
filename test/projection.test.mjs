@@ -1,9 +1,13 @@
-import { SPINE_PROJECTION_KEY, MAX_CUTS, KNOB_KEYS, knifeOf, spineProjectionDefinition } from "../projection.js";
+import {
+  SPINE_PROJECTION_KEY, MAX_CUTS, KNOB_KEYS, knifeOf, spineProjectionDefinition,
+  isOursOfficial, attributeCuts, countCuts,
+} from "../projection.js";
 
 let pass = 0, fail = 0;
 const ok = (c, n, x = "") => { if (c) { pass++; console.log("  ok  " + n); } else { fail++; console.log("  FAIL  " + n + " " + x); } };
 
 const def = spineProjectionDefinition({ shadowDir: (sid) => "/shadow/" + sid });
+const view0 = () => def.wire.view(def.init({ id: "empty" }, 0));
 let state = def.init({ id: "session-1" }, 0);
 
 const summary = (id, tokens, start, end, extra = {}) => ({
@@ -24,6 +28,7 @@ ok(def.key === SPINE_PROJECTION_KEY && SPINE_PROJECTION_KEY === "spine.cuts", "�
 ok(state.saved === 0 && state.cuts.length === 0 && state.sid === "session-1", "空状态带会话号");
 ok(state.shadowDir === "/shadow/session-1", "影子目录 " + state.shadowDir);
 ok(state.kinds.small === 0 && state.savedBy.official === 0, "四种刀法的计数从 0 开始");
+ok(view0().kinds.big === 0 && view0().kinds.official === 0, "视图把大刀和官方分开计");
 
 console.log("2. 一次小刀：summary + 卡片");
 state = def.apply(state, summary("c1", 8000, 100, 140));
@@ -90,7 +95,7 @@ console.log("11. 视图只吐客户端需要的字段");
 const view = def.wire.view(state);
 ok(view.cuts.length === MAX_CUTS && view.pending === undefined, "视图没有 pending");
 const keys = Object.keys(view).sort().join(",");
-ok(keys === "cuts,docs,global,kinds,official,saved,savedBy,settings,shadowDir,sid,spine,version", "字段集 " + keys);
+ok(keys === "cuts,docs,firstActivity,global,kinds,official,saved,savedBy,settings,shadowDir,sid,spine,version", "字段集 " + keys);
 ok(def.stateSchema.parse(state) === state && def.viewSchema.parse(view) === view, "无 zod 时 schema 原样放行（宿主只调 parse）");
 ok(def.wire.view(state) === view, "什么都没变时复用同一个视图对象");
 
@@ -157,6 +162,53 @@ console.log("15. 挂起的 summary 有上限，不会无限堆");
   }
   ok(Object.keys(s.pending).length === 20, "挂起项封顶 20（" + Object.keys(s.pending).length + "）");
   ok(s.pending.x29 !== undefined && s.pending.x0 === undefined, "留的是最新的");
+}
+
+console.log("16. 官方压缩归谁：接管之后算大刀，之前算官方");
+{
+  const first = Date.parse("2026-11-21T09:00:00.000Z");
+  const before = { kind: "official", time: first - 3600_000, tokens: 5000 };
+  const after = { kind: "official", time: first + 60_000, tokens: 400000 };
+  const ours = { kind: "small", time: first + 120_000, tokens: 8000 };
+  const list = attributeCuts([before, after, ours], first);
+  ok(list[0].kind === "official", "接管前的官方压缩仍是官方");
+  ok(list[1].kind === "big", "接管后的官方压缩记成大刀（时间是卡片时间）");
+  ok(list[2].kind === "small", "小刀不受影响");
+  ok(isOursOfficial(first, first) && !isOursOfficial(first - 1, first), "边界：正好等于首次活动算我们的，早一毫秒就不算");
+  ok(!isOursOfficial(first, 0), "没有首次活动时间时不瞎认");
+  ok(attributeCuts([before, after], 0)[1].kind === "official", "日志缺失时保守算官方");
+  const counted = countCuts({ kinds: { official: 2 }, savedBy: { official: 405000 } }, list);
+  ok(counted.kinds.big === 1 && counted.kinds.official === 1, "计数按归属分开");
+  ok(counted.savedBy.big === 400000 && counted.savedBy.official === 5000, "切掉量也跟着分");
+  // 40 刀上限之外的历史：原始计数比看得见的多，多出来的保守记官方
+  const capped = countCuts({ kinds: { official: 5 }, savedBy: { official: 900000 } }, attributeCuts([after, ours], first));
+  ok(capped.kinds.big === 1 && capped.kinds.official === 4, "上限之外的历史记成官方（" + capped.kinds.official + "）");
+  ok(capped.savedBy.official === 500000, "切掉量补回：" + capped.savedBy.official);
+}
+
+console.log("17. 视图里带着每条会话的首次活动时间");
+{
+  const first = Date.parse("2026-11-21T09:00:00.000Z");
+  const aggregate = {
+    generatedAt: 1, since: first, sessions: 1,
+    knives: { small: { cuts: 0, tokens: 0, saved: 0 }, merge: { cuts: 0, tokens: 0, saved: 0 }, big: { cuts: 1, tokens: 500000, saved: 400000 } },
+    attempts: { cut: 0, cutSkip: 0, mergeSkip: 0, official: 1, failed: 0 },
+    firstBySid: { "session-abc": first },
+  };
+  const d = spineProjectionDefinition({ globalStatsReader: () => aggregate });
+  let s = d.init({ id: "session-abc" }, 0);
+  s = d.apply(s, { type: "compaction/summary", seq: 1, time: first + 1000, data: { compactionId: "x", shadowedRange: { start: 1, end: 9 }, shadowedTokenCount: 700, provider: "p", model: "m" } });
+  s = d.apply(s, { type: "user/message", seq: 2, time: first + 1000, data: { source: { kind: "compact-checkpoint", compactionId: "x" }, content: [{ type: "text", text: "官方摘要" }] } });
+  const v = d.wire.view(s);
+  ok(v.firstActivity === first, "视图带首次活动时间");
+  ok(v.cuts[0].kind === "big" && v.kinds.big === 1 && v.kinds.official === 0, "卡片归到大刀");
+  ok(v.official === 0, "官方计数不再被误算");
+  // 同一批数据、但会话名对不上时不该乱认
+  let s2 = d.init({ id: "other-session" }, 0);
+  s2 = d.apply(s2, { type: "compaction/summary", seq: 1, time: first + 1000, data: { compactionId: "y", shadowedRange: { start: 1, end: 9 }, shadowedTokenCount: 700 } });
+  s2 = d.apply(s2, { type: "user/message", seq: 2, time: first + 1000, data: { source: { kind: "compact-checkpoint", compactionId: "y" }, content: [{ type: "text", text: "x" }] } });
+  const v2 = d.wire.view(s2);
+  ok(v2.firstActivity === 0 && v2.cuts[0].kind === "official", "没记录的会话仍算官方");
 }
 
 console.log("\n通过 " + pass + " / 失败 " + fail);

@@ -1,5 +1,5 @@
 /** 跨会话汇总：只喂文本，不碰真实文件系统。 */
-import { aggregateDecisions, readGlobalStats, resetStatsCache, DECISIONS_FILE } from "../stats.js";
+import { aggregateDecisions, readGlobalStats, resetStatsCache, sidKey, firstActivityOf, DECISIONS_FILE } from "../stats.js";
 import { mkdtempSync, writeFileSync, rmSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,7 +29,7 @@ console.log("2. 小刀 / 中刀 / 大刀分别计数");
   const out = aggregateDecisions(text);
   ok(out.knives.small.cuts === 3 && out.knives.small.saved === 11000, "小刀 3 刀 / 11000（" + out.knives.small.saved + "）");
   ok(out.knives.merge.cuts === 1 && out.knives.merge.saved === 50000, "中刀 1 刀 / 50000");
-  ok(out.knives.official.cuts === 1 && out.knives.official.saved === 340000, "大刀切掉 before-after = 340000");
+  ok(out.knives.big.cuts === 1 && out.knives.big.saved === 340000, "大刀（插件请官方摘要）切掉 before-after = 340000");
   ok(out.sessions === 2, "两个会话：" + out.sessions);
   ok(out.attempts.cut === 4 && out.attempts.official === 1, "尝试次数");
   ok(out.recent.length === 5 && out.recent[0].kind === "small", "最近列表按时间倒序，同秒时保留插入序");
@@ -51,7 +51,7 @@ console.log("3. 跳过与失败也算尝试");
   ok(out.attempts.mergeSkip === 1, "merge-skip 计 1");
   ok(out.attempts.failed === 2, "失败计 2（cut + handover）");
   ok(out.attempts.official === 0, "result=null 不算跑过");
-  ok(out.knives.official.cuts === 0, "没跑过就不记刀");
+  ok(out.knives.big.cuts === 0, "没跑过就不记刀");
 }
 
 console.log("4. 坏行不连累整个文件");
@@ -74,7 +74,7 @@ console.log("5. 缺字段时退化成 0，不产生 NaN");
   const text = [rec({ phase: "cut", result: "committed" }), rec({ phase: "official-handover", result: "ran" })].join("\n");
   const out = aggregateDecisions(text);
   ok(out.knives.small.cuts === 1 && out.knives.small.saved === 0, "没有 saved 记 0");
-  ok(out.knives.official.cuts === 1 && out.knives.official.saved === 0, "没有 before/after 记 0");
+  ok(out.knives.big.cuts === 1 && out.knives.big.saved === 0, "没有 before/after 记 0");
   ok(Number.isFinite(out.knives.small.tokens), "tokens 不是 NaN");
   ok(out.sessions === 0, "没有 sid 不计会话");
 }
@@ -100,7 +100,24 @@ console.log("6. 读文件：按 mtime 判重");
   }
 }
 
-console.log("7. 超大日志只读尾巴");
+console.log("7. 会话名归一与「第一次碰它」的时间");
+{
+  ok(sidKey("session-abc") === "abc" && sidKey("abc") === "abc", "session- 前缀剥掉");
+  ok(sidKey("memory-xyz") === "xyz" && sidKey("") === "", "memory- 前缀也认");
+  const text = [
+    rec({ sid: "session-a", ts: "2026-01-02T03:00:00.000Z", phase: "engine", engine: "local" }),
+    rec({ sid: "session-a", ts: "2026-01-02T05:00:00.000Z", phase: "cut", result: "committed", saved: 100, tokens: 200 }),
+    rec({ sid: "session-b", ts: "2026-01-02T04:00:00.000Z", phase: "engine", engine: "local" }),
+  ].join("\n");
+  const out = aggregateDecisions(text);
+  ok(Object.keys(out.firstBySid).length === 2, "每个会话一条最早记录");
+  ok(out.firstBySid["session-a"] === Date.parse("2026-01-02T03:00:00.000Z"), "取的是最早那条（数值毫秒）");
+  ok(firstActivityOf(out, "a") === Date.parse("2026-01-02T03:00:00.000Z"), "查的时候不用带 session- 前缀");
+  ok(firstActivityOf(out, "session-a") === firstActivityOf(out, "a"), "带不带前缀都一样");
+  ok(firstActivityOf(out, "unknown") === 0 && firstActivityOf(null, "a") === 0, "查不到给 0");
+}
+
+console.log("8. 超大日志只读尾巴");
 {
   const dir = mkdtempSync(join(tmpdir(), "spine-stats-big-"));
   try {

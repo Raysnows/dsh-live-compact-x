@@ -10,6 +10,8 @@
  * client through useProjection('spine.cuts').
  */
 
+import { firstActivityOf } from "./stats.js";
+
 export const SPINE_PROJECTION_KEY = "spine.cuts";
 export const MAX_CUTS = 40;
 
@@ -61,6 +63,49 @@ function previewOf(content) {
   return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}…` : text;
 }
 
+/**
+ * 官方压缩的卡到底是谁发起的：
+ * 本插件接管之后，官方摘要只有我们请它才会跑（`official-handover`），所以卡片时间
+ * 落在「这条会话第一次被本插件碰到」之后，就算我们的大刀；更早的是插件接管以前的
+ * 历史压缩，仍记官方。
+ * @param {number} time 卡片时间（ms）
+ * @param {number} firstActivity 这条会话第一次被本插件碰到的毫秒数
+ */
+export function isOursOfficial(time, firstActivity) {
+  const at = Number(time) || 0;
+  const first = Number(firstActivity) || 0;
+  return first > 0 && at >= first;
+}
+
+/** 把原始 cuts 归成五类：小刀 / 中刀 / 大刀 / 官方 / 旧卡片。 */
+export function attributeCuts(cuts, firstActivity) {
+  return (Array.isArray(cuts) ? cuts : []).map((cut) => {
+    if (cut?.kind === "official" && isOursOfficial(cut.time, firstActivity)) return { ...cut, kind: "big" };
+    return { ...cut };
+  });
+}
+
+/** 视图侧计数：按归属后的 cuts 数，再把 40 刀上限之外的历史按官方补回来。 */
+export function countCuts(state, cuts) {
+  const kinds = { ...EMPTY_VIEW_COUNTERS };
+  const savedBy = { ...EMPTY_VIEW_COUNTERS };
+  for (const cut of cuts) {
+    const kind = String(cut?.kind || "official");
+    if (!(kind in kinds)) continue;
+    kinds[kind] += 1;
+    savedBy[kind] += Number(cut.tokens) || 0;
+  }
+  const rawOfficial = Number(state?.kinds?.official) || 0;
+  const seen = kinds.big + kinds.official;
+  if (rawOfficial > seen) {
+    kinds.official += rawOfficial - seen;
+    const rawSaved = Number(state?.savedBy?.official) || 0;
+    const seenSaved = savedBy.big + savedBy.official;
+    if (rawSaved > seenSaved) savedBy.official += rawSaved - seenSaved;
+  }
+  return { kinds, savedBy };
+}
+
 /** 最小 schema：宿主只调用 .parse()，不引 zod 也能注册；有 zod 就用真 zod。 */
 function looseSchema() {
   return { parse: (value) => value };
@@ -70,6 +115,9 @@ export function schemaFor(zod) {
   if (!zod?.object) return { state: looseSchema(), view: looseSchema() };
   const counters = zod.object({
     small: zod.number(), merge: zod.number(), plugin: zod.number(), official: zod.number(),
+  });
+  const viewCounters = zod.object({
+    small: zod.number(), merge: zod.number(), plugin: zod.number(), big: zod.number(), official: zod.number(),
   });
   const cut = zod.object({
     id: zod.string(),
@@ -100,7 +148,8 @@ export function schemaFor(zod) {
     generatedAt: zod.number(),
     since: zod.number(),
     sessions: zod.number(),
-    knives: zod.object({ small: knifeStat, merge: knifeStat, official: knifeStat }),
+    knives: zod.object({ small: knifeStat, merge: knifeStat, big: knifeStat }),
+    firstBySid: zod.record(zod.string(), zod.number()),
     attempts: zod.object({
       cut: zod.number(), cutSkip: zod.number(), mergeSkip: zod.number(), official: zod.number(), failed: zod.number(),
     }),
@@ -113,9 +162,10 @@ export function schemaFor(zod) {
     official: zod.number(),
     sid: zod.string(),
     shadowDir: zod.string(),
-    kinds: counters,
-    savedBy: counters,
+    kinds: viewCounters,
+    savedBy: viewCounters,
     cuts: zod.array(cut),
+    firstActivity: zod.number(),
     settings: zod.record(zod.string(), zod.number()),
     docs: zod.object({
       readme: zod.string(), repo: zod.string(), issues: zod.string(),
@@ -126,13 +176,15 @@ export function schemaFor(zod) {
 }
 
 const EMPTY_COUNTERS = { small: 0, merge: 0, plugin: 0, official: 0 };
+const EMPTY_VIEW_COUNTERS = { small: 0, merge: 0, plugin: 0, big: 0, official: 0 };
 const EMPTY_KNIFE = () => ({ cuts: 0, tokens: 0, saved: 0 });
 const EMPTY_GLOBAL = () => ({
   generatedAt: 0,
   since: 0,
   sessions: 0,
-  knives: { small: EMPTY_KNIFE(), merge: EMPTY_KNIFE(), official: EMPTY_KNIFE() },
+  knives: { small: EMPTY_KNIFE(), merge: EMPTY_KNIFE(), big: EMPTY_KNIFE() },
   attempts: { cut: 0, cutSkip: 0, mergeSkip: 0, official: 0, failed: 0 },
+  firstBySid: {},
 });
 
 /**
@@ -250,7 +302,11 @@ export function spineProjectionDefinition({
         if (globalStatsReader) {
           try { global = globalStatsReader() || global; } catch { global = EMPTY_GLOBAL(); }
         }
-        const stamp = JSON.stringify([settings, global.generatedAt, global.sessions, global.knives]);
+        // 这条会话第一次被本插件碰到的时间：早于它的官方压缩算接管前的历史。
+        const firstActivity = firstActivityOf(global, state.sid);
+        const cuts = attributeCuts(state.cuts, firstActivity);
+        const { kinds, savedBy } = countCuts(state, cuts);
+        const stamp = JSON.stringify([settings, global.generatedAt, global.sessions, global.knives, firstActivity, cuts.length]);
         if (cachedView && cachedStamp === stamp) return cachedView;
         cachedStamp = stamp;
         cachedView = {
@@ -258,12 +314,13 @@ export function spineProjectionDefinition({
           version: state.version || 1,
           saved: state.saved || 0,
           spine: state.spine || 0,
-          official: state.official || 0,
+          official: kinds.official,
           sid: state.sid || "",
           shadowDir: state.shadowDir || "",
-          kinds: { ...EMPTY_COUNTERS, ...(state.kinds || {}) },
-          savedBy: { ...EMPTY_COUNTERS, ...(state.savedBy || {}) },
-          cuts: (state.cuts || []).map((cut) => ({ ...cut })),
+          kinds,
+          savedBy,
+          cuts,
+          firstActivity,
           settings,
           docs: docsValue,
         };

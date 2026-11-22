@@ -20,8 +20,12 @@ function emptyAggregate() {
     generatedAt: 0,
     since: 0,
     sessions: 0,
-    knives: { small: emptyKnife(), merge: emptyKnife(), official: emptyKnife() },
+    // 日志只知道本插件做过什么：小刀、中刀、大刀（请官方摘要接手）。
+    // 原生官方压缩不走这里，所以没有 official 这一格。
+    knives: { small: emptyKnife(), merge: emptyKnife(), big: emptyKnife() },
     attempts: { cut: 0, cutSkip: 0, mergeSkip: 0, official: 0, failed: 0 },
+    // 每个会话第一次有记录的毫秒数：早于它就是插件接管之前的历史压缩。
+    firstBySid: {},
     recent: [],
   };
 }
@@ -31,9 +35,9 @@ function num(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** 一刀记在哪个刀法名下：official-handover 是官方大刀，cut 记录看 merge 标记。 */
+/** 一刀记在哪个刀法名下：official-handover 是本插件的大刀，cut 记录看 merge 标记。 */
 function knifeKey(record) {
-  if (record?.phase === "official-handover") return "official";
+  if (record?.phase === "official-handover") return "big";
   if (record?.merge === true) return "merge";
   return "small";
 }
@@ -56,6 +60,7 @@ export function aggregateDecisions(text) {
     if (sid) sessions.add(sid);
     const ts = Date.parse(String(record.ts || "")) || 0;
     if (ts && (!out.since || ts < out.since)) out.since = ts;
+    if (ts && sid && (!out.firstBySid[sid] || ts < out.firstBySid[sid])) out.firstBySid[sid] = ts;
     const phase = String(record.phase || "");
     const result = String(record.result || "");
     if (phase === "cut") {
@@ -80,10 +85,10 @@ export function aggregateDecisions(text) {
         const before = num(record.before);
         const after = num(record.after);
         const saved = Math.max(0, before - after);
-        const knife = out.knives.official;
-        out.knives.official = { cuts: knife.cuts + 1, tokens: knife.tokens + before, saved: knife.saved + saved };
+        const knife = out.knives.big;
+        out.knives.big = { cuts: knife.cuts + 1, tokens: knife.tokens + before, saved: knife.saved + saved };
         out.attempts.official += 1;
-        out.recent.push({ t: ts, sid, kind: "official", saved, tokens: before });
+        out.recent.push({ t: ts, sid, kind: "big", saved, tokens: before });
       } else if (result === "failed") {
         out.attempts.failed += 1;
       }
@@ -131,6 +136,27 @@ export function readGlobalStats({ dir, ttlMs = DEFAULT_TTL_MS, maxBytes = DEFAUL
   cachedKey = key;
   cachedAt = now;
   return cachedStats;
+}
+
+/** 会话名归一：日志里是 memory-... / session-<uuid>，投影里可能只有 <uuid>。 */
+export function sidKey(sid) {
+  return String(sid || "").replace(/^session-/, "").replace(/^memory-/, "");
+}
+
+/**
+ * 这条会话第一次被本插件碰到的毫秒数：早于它的官方压缩是接管前的历史，
+ * 不该记成本插件的大刀。
+ * @param {ReturnType<typeof readGlobalStats>} aggregate
+ * @param {string} sid
+ */
+export function firstActivityOf(aggregate, sid) {
+  const table = aggregate?.firstBySid || {};
+  const key = sidKey(sid);
+  if (!key) return 0;
+  for (const [raw, ts] of Object.entries(table)) {
+    if (sidKey(raw) === key) return Number(ts) || 0;
+  }
+  return 0;
 }
 
 /** 测试用：清掉模块级缓存。 */
