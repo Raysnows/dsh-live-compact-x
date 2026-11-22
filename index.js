@@ -453,7 +453,7 @@ function maintenanceOperationSignal(agentSignal, timeoutSignal) {
   return controller.signal;
 }
 
-function spineCheckpointSource(compactionId, rawPaths = []) {
+function spineCheckpointSource(compactionId, rawPaths = [], knife = "small") {
   // 不用 compact-checkpoint。官方压缩会把那种节点当成上一版摘要再摘一次。
   // Do not use compact-checkpoint. Official compaction treats that kind as a prior summary and shrinks it again.
   const rawNames = [...new Set((rawPaths || []).map((path) => basename(String(path || "")))
@@ -461,6 +461,8 @@ function spineCheckpointSource(compactionId, rawPaths = []) {
   return Object.freeze({
     kind: SPINE_SOURCE_KIND,
     compactionId,
+    // 哪一把刀切的：small=小刀、merge=中刀。老卡片没有这个字段，面板按「本插件」显示。
+    knife: knife === "merge" ? "merge" : "small",
     ...(rawNames.length ? { rawNames } : {}),
   });
 }
@@ -2148,7 +2150,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
         { type: "text", text: `${CHECKPOINT_PREAMBLE}\n\n${MARK}` },
         ...summarized.summary,
       ],
-      source: spineCheckpointSource(compactionId, chunk.card?.rawPaths || []),
+      source: spineCheckpointSource(compactionId, chunk.card?.rawPaths || [], chunk.merge ? "merge" : "small"),
     });
     const framedTokens = typeof this.ctx.tokenMeter.estimateMessage === "function"
       ? this.ctx.tokenMeter.estimateMessage(checkpointMessage)

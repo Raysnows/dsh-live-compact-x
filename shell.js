@@ -11,6 +11,11 @@ import { configSchema, engineConfig } from "./settings.js";
 import { installPresetGate } from "./gate.js";
 import { installPruneHook } from "./v2/prune-hook.js";
 import { spineProjectionDefinition } from "./projection.js";
+import { readGlobalStats } from "./stats.js";
+import { readSettings } from "./settings.js";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
 import { shadowDirectory } from "./shadow.js";
 import { sessionDir } from "./shadow.js";
 import { defaultV2, v2Enabled } from "./v2/store-switch.js";
@@ -132,6 +137,21 @@ export function releaseRootStockCompaction(ctx, { deferDispose = false } = {}) {
 }
 
 // 面板数据：把「切过多少/切在哪/卡片文件在哪」做成会话投影，客户端直接读。
+const REPO_URL = "https://github.com/Raysnows/dsh-live-compact-x";
+const ISSUES_URL = REPO_URL + "/issues";
+
+// 面板要显示的是生效值：构造时把本次加载的配置记下来，投影那边按需解析。
+let latestConfig = null;
+
+function pluginDir() {
+  try { return dirname(fileURLToPath(import.meta.url)); } catch { return ""; }
+}
+
+function ownVersion(dir) {
+  if (!dir) return "";
+  try { return String(JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).version || ""); } catch { return ""; }
+}
+
 // 服务可选（老宿主没有 sessionProjections），注册失败只影响面板，绝不影响压缩。
 let zod = null;
 try { zod = (await import("zod")).z; } catch {}
@@ -140,10 +160,22 @@ function installCutsProjection(ctx) {
   try {
     const projections = ctx?.get?.("sessionProjections");
     if (!projections?.register) return;
+    const here = pluginDir();
     const definition = spineProjectionDefinition({
       zod,
       shadowDir: (sid) => {
         try { return sessionDir(shadowDirectory(), sid || "__default__"); } catch { return ""; }
+      },
+      // 面板上的旋钮值：配置 > 文件 > 环境 > 默认，和引擎实际用的同一套解析。
+      settingsReader: () => readSettings(latestConfig || {}),
+      // 「全部会话」：直接汇总 shadow 根目录的决策日志，按 mtime 判重，1.5 秒缓存。
+      globalStatsReader: () => readGlobalStats({ dir: shadowDirectory() }),
+      docs: {
+        readme: here ? join(here, "README.md") : "",
+        changelog: here ? join(here, "CHANGELOG.md") : "",
+        repo: REPO_URL,
+        issues: ISSUES_URL,
+        version: ownVersion(here),
       },
     });
     let handle = null;
@@ -196,6 +228,7 @@ export default class LiveCompactEntry {
   static Config = Schema || Stock?.Config || Engine?.Config;
 
   constructor(ctx, config) {
+    try { latestConfig = config || {}; } catch {}
     installCutsProjection(ctx);
     installPresetGate(ctx, config);
     // V2：在被官方修剪器改写之前，把那一小撮原文压一份兜底副本。

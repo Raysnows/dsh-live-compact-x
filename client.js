@@ -78,6 +78,7 @@ window.__ModuleLoader__.load({
       "spine.official": "官方卡片",
       "spine.average": "平均",
       "spine.biggest": "最大一刀",
+      "spine.topKnife": "最多刀法",
       "spine.last": "最近一刀",
       "spine.none": "还没有",
       "spine.tokensShort": "tokens",
@@ -115,6 +116,47 @@ window.__ModuleLoader__.load({
       overridden: "已覆盖",
       reset: "恢复默认",
       unavailableHost: "宿主没有提供这一项配置",
+      "spine.scopeSession": "本会话",
+      "spine.scopeAll": "全部会话",
+      "spine.scopeSessionHint": "只看这一条会话切过什么",
+      "spine.scopeAllHint": "按决策日志汇总所有会话 · 统计于",
+      "spine.scopeHintNow": "本会话累计",
+      "spine.scopeHintAll": "全部会话累计",
+      "spine.knifeSmall": "小刀",
+      "spine.knifeMerge": "中刀",
+      "spine.knifeOfficial": "大刀（官方）",
+      "spine.knifePlugin": "旧卡片",
+      "spine.knifeStats": "刀法统计",
+      "spine.colKnife": "刀法",
+      "spine.colCount": "刀数",
+      "spine.colSaved": "切掉",
+      "spine.colShare": "占比",
+      "spine.colAvg": "平均",
+      "spine.experimental": "实验性",
+      "spine.enableMid": "启用中刀（合并整张卡片，默认关闭）",
+      "spine.groupSmallHint": "抢在官方压缩之前先切尾巴，一行内容都不丢。",
+      "spine.groupMidHint": "上下文很大时，把连续的老卡片并成一张；不省钱就不动。",
+      "spine.groupBigHint": "前两把刀都切不动时，才请官方压缩接手。",
+      "spine.docs": "文档与出处",
+      "spine.docsHint": "点复制带走路径",
+      "spine.docsReadme": "README",
+      "spine.docsChangelog": "更新记录",
+      "spine.docsRepo": "仓库",
+      "spine.docsIssues": "反馈",
+      "spine.version": "版本",
+      "spine.debug": "调试信息",
+      "spine.debugHint": "默认收起",
+      "spine.debugSid": "会话 ID",
+      "spine.debugCounts": "计数",
+      "spine.debugSettings": "生效设置",
+      "spine.sessions": "会话数",
+      "spine.sessionsHint": "有切刀记录的会话",
+      "spine.since": "最早记录",
+      "spine.generated": "统计于",
+      "spine.attempts": "尝试",
+      "spine.skipped": "跳过",
+      "spine.failed": "失败",
+      "spine.allEmpty": "还没有任何会话切过内容。",
     };
     const en = {
       takeoverPresets: "Take over official presets",
@@ -129,6 +171,7 @@ window.__ModuleLoader__.load({
       "spine.official": "Official cards",
       "spine.average": "avg",
       "spine.biggest": "Largest cut",
+      "spine.topKnife": "Top knife",
       "spine.last": "Last cut",
       "spine.none": "none yet",
       "spine.tokensShort": "tokens",
@@ -166,26 +209,78 @@ window.__ModuleLoader__.load({
       overridden: "Overridden",
       reset: "Reset to default",
       unavailableHost: "The host does not serve this namespace",
+      "spine.scopeSession": "This session",
+      "spine.scopeAll": "All sessions",
+      "spine.scopeSessionHint": "What this session cut",
+      "spine.scopeAllHint": "Aggregated from the decision log · as of",
+      "spine.scopeHintNow": "This session",
+      "spine.scopeHintAll": "All sessions",
+      "spine.knifeSmall": "Small cut",
+      "spine.knifeMerge": "Merge cut",
+      "spine.knifeOfficial": "Official",
+      "spine.knifePlugin": "Legacy card",
+      "spine.knifeStats": "Knife stats",
+      "spine.colKnife": "knife",
+      "spine.colCount": "cuts",
+      "spine.colSaved": "cut",
+      "spine.colShare": "share",
+      "spine.colAvg": "avg",
+      "spine.experimental": "experimental",
+      "spine.enableMid": "Enable the merge cut (joins whole cards, off by default)",
+      "spine.groupSmallHint": "Cuts the tail before official compaction, dropping nothing.",
+      "spine.groupMidHint": "When the context is huge, joins continuous old cards; skips unless it pays off.",
+      "spine.groupBigHint": "Only when the first two knives cannot cut, the official summary takes over.",
+      "spine.docs": "Docs",
+      "spine.docsHint": "copy any path",
+      "spine.docsReadme": "README",
+      "spine.docsChangelog": "Changelog",
+      "spine.docsRepo": "Repo",
+      "spine.docsIssues": "Issues",
+      "spine.version": "Version",
+      "spine.debug": "Debug info",
+      "spine.debugHint": "collapsed by default",
+      "spine.debugSid": "Session ID",
+      "spine.debugCounts": "Counters",
+      "spine.debugSettings": "Effective settings",
+      "spine.sessions": "Sessions",
+      "spine.sessionsHint": "sessions with cuts",
+      "spine.since": "Since",
+      "spine.generated": "as of",
+      "spine.attempts": "Attempts",
+      "spine.skipped": "skipped",
+      "spine.failed": "failed",
+      "spine.allEmpty": "No session has cut anything yet.",
     };
 
     const SPINE_KEY = "spine.cuts";
     const SPINE_CSS = [
-      ".sp-root{box-sizing:border-box;height:100%;overflow-y:auto;padding:12px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5}",
-      ".sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:8px;margin-bottom:10px}",
+      ".sp-root{box-sizing:border-box;height:100%;overflow-y:auto;padding:12px 14px 26px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5}",
+      ".sp-topbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}",
+      ".sp-scope{display:inline-flex;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
+      ".sp-scope-btn{font:inherit;font-size:12px;padding:3px 13px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}",
+      ".sp-scope-btn[data-on='1']{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);font-weight:600}",
+      ".sp-topbar-sub{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
+      ".sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-bottom:10px}",
       ".sp-kpi{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:8px 10px;min-width:0}",
       ".sp-kpi-label{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
-      ".sp-kpi-value{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px}",
+      ".sp-kpi-value{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px;letter-spacing:-.01em}",
       ".sp-kpi-hint{font-size:10.5px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-secondary));margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".sp-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;margin-bottom:10px}",
       ".sp-card-title{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:8px}",
       ".sp-card-sub{margin-left:auto;font-weight:400;font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
-      ".sp-bar{display:flex;gap:2px;height:20px;border-radius:6px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
+      ".sp-bar{display:flex;gap:2px;height:22px;border-radius:6px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
       ".sp-seg{height:100%;min-width:2px}",
       ".sp-seg:hover{opacity:.72}",
-      ".sp-legend{display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:8px}",
+      ".sp-legend{display:flex;flex-wrap:wrap;gap:12px 16px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:8px;font-variant-numeric:tabular-nums}",
       ".sp-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}",
-      ".sp-head{display:grid;grid-template-columns:20px 58px 1fr 74px 1fr 66px 46px;gap:8px;padding:0 6px 4px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
-      ".sp-row{display:grid;grid-template-columns:20px 58px 1fr 74px 1fr 66px 46px;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;font-size:12px}",
+      ".sp-thead,.sp-trow{display:grid;grid-template-columns:1fr 58px 78px 58px 66px;gap:8px;align-items:center;padding:4px 6px}",
+      ".sp-thead{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary);border-bottom:1px solid var(--dsw-alias-border-l2);margin-bottom:2px}",
+      ".sp-trow{font-size:12.5px;border-radius:6px}",
+      ".sp-trow:hover{background:var(--dsw-alias-interactive-bg-hover)}",
+      ".sp-trow-off{opacity:.55}",
+      ".sp-knife{display:flex;align-items:center;min-width:0}",
+      ".sp-head{display:grid;grid-template-columns:20px 62px 1fr 72px 1fr 62px 42px;gap:8px;padding:0 6px 4px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
+      ".sp-row{display:grid;grid-template-columns:20px 62px 1fr 72px 1fr 62px 42px;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;font-size:12px}",
       ".sp-row:hover{background:var(--dsw-alias-interactive-bg-hover)}",
       ".sp-badge{font-size:10.5px;line-height:17px;padding:0 6px;border-radius:999px;border:1px solid;text-align:center;white-space:nowrap}",
       ".sp-mono{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-variant-numeric:tabular-nums}",
@@ -201,30 +296,67 @@ window.__ModuleLoader__.load({
       ".sp-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}",
       ".sp-btn-primary{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);border-color:transparent}",
       ".sp-btn:disabled{opacity:.45;cursor:not-allowed}",
-      ".sp-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 14px}",
+      ".sp-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:10px 14px}",
       ".sp-group{margin-bottom:12px}",
       ".sp-group:last-child{margin-bottom:0}",
       ".sp-group-title{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-bottom:6px}",
       ".sp-group-title::after{content:'';flex:1;height:1px;background:var(--dsw-alias-border-l2)}",
+      ".sp-switch{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dsw-alias-label-secondary);margin-bottom:8px}",
       ".sp-field{display:flex;flex-direction:column;gap:4px;min-width:0}",
       ".sp-field-head{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary)}",
       ".sp-tag{font-size:10px;padding:0 5px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);white-space:nowrap}",
+      ".sp-tag-warn{border-color:var(--dsw-alias-state-warning-primary,#C88A2E);color:var(--dsw-alias-state-warning-primary,#C88A2E)}",
       ".sp-field-row{display:flex;align-items:center;gap:6px}",
       ".sp-input{font:inherit;font-size:12px;width:100%;box-sizing:border-box;padding:3px 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
       ".sp-input:focus{border-color:var(--dsw-alias-state-business-primary);outline:none}",
       ".sp-input:disabled{opacity:.5}",
       ".sp-field-hint{font-size:10.5px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-secondary));overflow-wrap:anywhere}",
-      ".sp-empty{color:var(--dsw-alias-label-secondary);text-align:center;padding:16px 0;font-size:12px}",
+      ".sp-empty{color:var(--dsw-alias-label-secondary);text-align:center;padding:14px 0;font-size:12px}",
       ".sp-foot{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:2px;flex-wrap:wrap}",
       ".sp-path{font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all}",
+      ".sp-docrow{display:grid;grid-template-columns:76px 1fr auto;gap:8px;align-items:center;padding:3px 0;border-bottom:1px dashed var(--dsw-alias-border-l2)}",
+      ".sp-docrow:last-child{border-bottom:0}",
+      ".sp-doclabel{font-size:11px;color:var(--dsw-alias-label-secondary)}",
+      ".sp-doclink{color:var(--dsw-alias-state-business-primary);text-decoration:none}",
+      ".sp-detail-row{display:grid;grid-template-columns:88px 1fr auto;gap:8px;align-items:center;font-size:11.5px}",
     ].join("\n");
-    const CUT_COLOR = { spine: "#6F9FE8", official: "#E0A35E" };
+    const KNIFE_ORDER = ["small", "merge", "official", "plugin"];
+    const KNIFE_COLOR = { small: "#6F9FE8", merge: "#9B7BE8", official: "#E0A35E", plugin: "#6FBFA8" };
+    const KNIFE_LABEL = {
+      small: "spine.knifeSmall", merge: "spine.knifeMerge", official: "spine.knifeOfficial", plugin: "spine.knifePlugin",
+    };
+    const EMPTY_KINDS = { small: 0, merge: 0, plugin: 0, official: 0 };
     const SEP = String.fromCharCode(92);
+    /** 打开中刀时写进 deepCutAbove 的默认门槛：上下文超过 12 万 token 才试。 */
+    const MID_ON = 120000;
     const KNOB_GROUPS = [
-      { id: "small", title: "小刀", keys: ["chunkMax", "chunkMin", "burstCuts", "paybackTurns", "spanBandRatio", "minNetGain"] },
-      { id: "mid", title: "中刀", keys: ["deepCutAbove", "mergeMaxSpan", "mergeBreakEven", "mergeCooldownMs"] },
-      { id: "big", title: "大刀", keys: ["officialAbove", "officialCooldownMs", "bigGate", "keepRounds", "keepRoundTokens"] },
+      {
+        id: "small",
+        title: "spine.knifeSmall",
+        hint: "spine.groupSmallHint",
+        keys: ["chunkMax", "chunkMin", "burstCuts", "paybackTurns", "spanBandRatio", "minNetGain"],
+      },
+      {
+        id: "mid",
+        title: "spine.knifeMerge",
+        hint: "spine.groupMidHint",
+        experimental: true,
+        enable: "deepCutAbove",
+        on: MID_ON,
+        keys: ["mergeMaxSpan", "mergeBreakEven", "mergeCooldownMs", "deepCutAbove"],
+      },
+      {
+        id: "big",
+        title: "spine.knifeOfficial",
+        hint: "spine.groupBigHint",
+        keys: ["officialAbove", "officialCooldownMs", "bigGate", "keepRounds", "keepRoundTokens"],
+      },
     ];
+
+    function num(value) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    }
 
     function fmtTokens(value) {
       const n = Number(value) || 0;
@@ -247,41 +379,82 @@ window.__ModuleLoader__.load({
       } catch {}
     }
 
+    /** 一刀属于哪把刀。老数据只有 spine / official 两种 kind，spine 当时就是小刀。 */
+    function kindOfCut(cut) {
+      const kind = String(cut?.kind || "");
+      if (KNIFE_ORDER.indexOf(kind) >= 0) return kind;
+      if (kind === "spine") return "small";
+      if (kind === "official") return "official";
+      return "plugin";
+    }
+
     /** 面板的全部统计都在这里算，纯函数，组件只负责画。 */
     function summarizeCuts(cuts) {
       const list = Array.isArray(cuts) ? cuts : [];
-      const sum = (arr) => arr.reduce((total, cut) => total + (Number(cut.tokens) || 0), 0);
-      const spine = list.filter((cut) => cut.kind === "spine");
-      const official = list.filter((cut) => cut.kind === "official");
-      const total = sum(list);
-      const biggest = list.reduce((best, cut) => ((Number(cut.tokens) || 0) > (Number(best && best.tokens) || 0) ? cut : best), null);
-      const files = list.reduce((count, cut) => count + (Array.isArray(cut.rawNames) ? cut.rawNames.length : 0), 0);
+      const byKind = {};
+      for (const kind of KNIFE_ORDER) byKind[kind] = { cuts: 0, saved: 0 };
+      let total = 0;
+      let files = 0;
+      let biggest = null;
+      for (const cut of list) {
+        const kind = kindOfCut(cut);
+        const tokens = num(cut.tokens);
+        byKind[kind].cuts += 1;
+        byKind[kind].saved += tokens;
+        total += tokens;
+        if (Array.isArray(cut.rawNames)) files += cut.rawNames.length;
+        if (!biggest || num(biggest.tokens) < tokens) biggest = cut;
+      }
+      const mine = byKind.small.cuts + byKind.merge.cuts + byKind.plugin.cuts;
+      const mineSaved = byKind.small.saved + byKind.merge.saved + byKind.plugin.saved;
       return {
         count: list.length,
         total,
-        spineCount: spine.length,
-        spineTokens: sum(spine),
-        officialCount: official.length,
-        officialTokens: sum(official),
+        byKind,
         average: list.length ? Math.round(total / list.length) : 0,
         biggest,
         files,
         first: list.length ? list[0] : null,
         last: list.length ? list[list.length - 1] : null,
+        spineCount: mine,
+        spineTokens: mineSaved,
+        officialCount: byKind.official.cuts,
+        officialTokens: byKind.official.saved,
       };
     }
 
     /** 构成条：每一刀按 token 占比分一段，小刀至少 1.5% 好看见。 */
     function barSegments(cuts) {
-      const list = (Array.isArray(cuts) ? cuts : []).filter((cut) => (Number(cut.tokens) || 0) > 0);
-      const total = list.reduce((sum, cut) => sum + (Number(cut.tokens) || 0), 0);
+      const list = (Array.isArray(cuts) ? cuts : []).filter((cut) => num(cut.tokens) > 0);
+      const total = list.reduce((sum, cut) => sum + num(cut.tokens), 0);
       if (!total) return [];
       return list.map((cut) => ({
         cut,
-        width: Math.max(1.5, ((Number(cut.tokens) || 0) / total) * 100),
-        share: (Number(cut.tokens) || 0) / total,
-        color: CUT_COLOR[cut.kind] || "var(--dsw-alias-label-secondary)",
+        width: Math.max(1.5, (num(cut.tokens) / total) * 100),
+        share: num(cut.tokens) / total,
+        color: KNIFE_COLOR[kindOfCut(cut)] || "var(--dsw-alias-label-secondary)",
       }));
+    }
+
+    /** 按刀法汇总的构成条：小刀 / 中刀 / 大刀 / 旧卡各一段。 */
+    function kindBars(rows) {
+      const list = (Array.isArray(rows) ? rows : []).filter((row) => num(row.saved) > 0);
+      const total = list.reduce((sum, row) => sum + num(row.saved), 0);
+      if (!total) return [];
+      return list.map((row) => ({
+        row,
+        width: Math.max(1.5, (num(row.saved) / total) * 100),
+        share: num(row.saved) / total,
+        color: row.color || "var(--dsw-alias-label-secondary)",
+      }));
+    }
+
+    function shareText(part, whole) {
+      const total = num(whole);
+      if (!total) return "—";
+      const ratio = (num(part) / total) * 100;
+      if (ratio >= 10) return ratio.toFixed(0) + "%";
+      return (ratio >= 1 ? ratio.toFixed(1) : ratio.toFixed(2)) + "%";
     }
 
     function Kpi(props) {
@@ -318,22 +491,30 @@ window.__ModuleLoader__.load({
         hint ? h("div", { className: "sp-field-hint" }, hint) : null);
     }
 
+    function KnifeBadge(props) {
+      const kind = props.kind;
+      return h("span", {
+        className: "sp-badge",
+        style: { color: KNIFE_COLOR[kind] || "inherit", borderColor: KNIFE_COLOR[kind] || "currentColor" },
+        title: props.title || undefined,
+      }, props.t(KNIFE_LABEL[kind] || "spine.knifePlugin"));
+    }
+
     function CutRow(props) {
       const { cut, t, dir, index } = props;
-      const color = CUT_COLOR[cut.kind] || "inherit";
+      const kind = kindOfCut(cut);
       const files = Array.isArray(cut.rawNames) ? cut.rawNames : [];
       const sep = String(dir || "").includes(SEP) ? SEP : "/";
       const range = cut.start && cut.end ? cut.start + "→" + cut.end : "—";
       return h("details", { className: "sp-details" },
         h("summary", { className: "sp-row" },
           h("span", { className: "sp-dim sp-num" }, String(index)),
-          h("span", { className: "sp-badge", style: { color, borderColor: color } },
-            cut.kind === "spine" ? t("spine.kindMine") : t("spine.kindOfficial")),
-          h("span", { className: "sp-mono sp-num", style: { textAlign: "left" } }, "−" + fmtTokens(cut.tokens)),
-          h("span", { className: "sp-dim sp-mono", style: { textAlign: "left" } }, range),
-          h("span", { className: "sp-dim", style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, cut.model || cut.provider || "—"),
-          h("span", { className: "sp-dim sp-mono" }, fmtClock(cut.time)),
-          h("span", { className: "sp-dim sp-num" }, files.length ? String(files.length) : "·")),
+          h(KnifeBadge, { kind, t }),
+          h("span", { className: "sp-dim sp-mono" }, range),
+          h("span", { className: "sp-num sp-mono" }, fmtTokens(cut.tokens)),
+          h("span", { className: "sp-dim" }, cut.model || cut.provider || "—"),
+          h("span", { className: "sp-dim sp-num" }, fmtClock(cut.time)),
+          h("span", { className: "sp-num sp-dim" }, files.length ? String(files.length) : "—")),
         h("div", { className: "sp-detail" },
           cut.preview ? h("p", { className: "sp-preview" }, cut.preview) : null,
           files.length
@@ -343,99 +524,305 @@ window.__ModuleLoader__.load({
             : h("div", { className: "sp-dim" }, t("spine.noFiles"))));
     }
 
+    function KnifeTable(props) {
+      const { t, rows, total } = props;
+      return h("div", null,
+        h("div", { className: "sp-thead" },
+          h("span", null, t("spine.colKnife")),
+          h("span", { className: "sp-num" }, t("spine.colCount")),
+          h("span", { className: "sp-num" }, t("spine.colSaved")),
+          h("span", { className: "sp-num" }, t("spine.colShare")),
+          h("span", { className: "sp-num" }, t("spine.colAvg"))),
+        rows.map((row) => h("div", {
+          key: row.kind,
+          className: "sp-trow" + (row.cuts ? "" : " sp-trow-off"),
+        },
+          h("span", { className: "sp-knife" },
+            h("span", { className: "sp-dot", style: { background: row.color } }),
+            t(row.labelKey),
+            row.experimental ? h("span", { className: "sp-tag sp-tag-warn", style: { marginLeft: "6px" } }, t("spine.experimental")) : null),
+          h("span", { className: "sp-num sp-mono" }, String(row.cuts)),
+          h("span", { className: "sp-num sp-mono" }, fmtTokens(row.saved)),
+          h("span", { className: "sp-num sp-mono" }, shareText(row.saved, total)),
+          h("span", { className: "sp-num sp-mono" }, row.cuts ? fmtTokens(Math.round(row.saved / row.cuts)) : "—"))));
+    }
+
+    function DocRow(props) {
+      const { t, label, value, href } = props;
+      if (!value) return null;
+      return h("div", { className: "sp-docrow" },
+        h("span", { className: "sp-doclabel" }, label),
+        href
+          ? h("a", { className: "sp-path sp-doclink", href, target: "_blank", rel: "noreferrer", title: value }, value)
+          : h("code", { className: "sp-path", title: value }, value),
+        h("button", { className: "sp-btn", onClick: () => copyText(value) }, t("spine.copy")));
+    }
+    function renderPanel(props, state, scope, bump, setScope) {
+      const t = props.t;
+      const model = props.model;
+      const actions = props.actions || {};
+      const shell = model && typeof model.shell === "function"
+        ? (() => { try { return model.shell() || {}; } catch { return {}; } })()
+        : {};
+      const all = scope === "all";
+      const global = (state && state.global) || {};
+      const sessionCuts = Array.isArray(state && state.cuts) ? state.cuts : [];
+      const settings = (state && state.settings) || {};
+      const docs = (state && state.docs) || {};
+      const allKnives = global.knives || {};
+      const subtitle = all
+        ? t("spine.scopeAllHint") + " " + fmtClock(global.generatedAt)
+        : t("spine.scopeSessionHint");
+      const topbar = h("div", { className: "sp-topbar" },
+        h("div", { className: "sp-scope" },
+          h("button", {
+            className: "sp-scope-btn",
+            "data-on": all ? "0" : "1",
+            onClick: () => setScope("session"),
+          }, t("spine.scopeSession")),
+          h("button", {
+            className: "sp-scope-btn",
+            "data-on": all ? "1" : "0",
+            onClick: () => setScope("all"),
+          }, t("spine.scopeAll"))),
+        h("span", { className: "sp-topbar-sub" }, subtitle));
+      if (!state) {
+        return h("div", { className: "sp-root" }, topbar,
+          h("div", { className: "sp-empty" }, t("spine.unavailable")));
+      }
+      // 计数优先用投影给的累计值（不吃 40 刀上限）；没有就按当前时间线自己算。
+      const derived = summarizeCuts(sessionCuts);
+      const hasCounters = Boolean(state.kinds || state.savedBy);
+      const counterKinds = hasCounters
+        ? { ...EMPTY_KINDS, ...(state.kinds || {}) }
+        : {
+          small: derived.byKind.small.cuts, merge: derived.byKind.merge.cuts,
+          plugin: derived.byKind.plugin.cuts, official: derived.byKind.official.cuts,
+        };
+      const savedBy = hasCounters
+        ? { ...EMPTY_KINDS, ...(state.savedBy || {}) }
+        : {
+          small: derived.byKind.small.saved, merge: derived.byKind.merge.saved,
+          plugin: derived.byKind.plugin.saved, official: derived.byKind.official.saved,
+        };
+      const rows = KNIFE_ORDER
+        .filter((kind) => !all || kind !== "plugin")
+        .map((kind) => {
+          const stat = all
+            ? { cuts: num(allKnives[kind] && allKnives[kind].cuts), saved: num(allKnives[kind] && allKnives[kind].saved) }
+            : { cuts: num(counterKinds[kind]), saved: num(savedBy[kind]) };
+          return {
+            kind,
+            color: KNIFE_COLOR[kind],
+            labelKey: KNIFE_LABEL[kind],
+            experimental: kind === "merge",
+            cuts: stat.cuts,
+            saved: stat.saved,
+          };
+        });
+      const totalSaved = rows.reduce((sum, row) => sum + row.saved, 0);
+      const totalCuts = rows.reduce((sum, row) => sum + row.cuts, 0);
+      const bars = kindBars(rows);
+      // 本会话看「最大的一刀」，全部会话没有逐刀记录，改看「量最大的一把刀」。
+      const topKnife = rows.reduce((best, row) => (row.saved > best.saved ? row : best), { saved: 0, kind: "", cuts: 0 });
+      const biggestCut = sessionCuts.reduce(
+        (best, cut) => (num(cut.tokens) > num(best && best.tokens) ? cut : best),
+        null,
+      );
+      const lastCut = sessionCuts.length ? sessionCuts[sessionCuts.length - 1] : null;
+      const attempts = global.attempts || {};
+      const kpis = all
+        ? [
+          h(Kpi, { key: "saved", label: t("spine.saved"), value: fmtTokens(totalSaved), hint: t("spine.savedHint"), color: "#6F9FE8" }),
+          h(Kpi, { key: "count", label: t("spine.count"), value: String(totalCuts), hint: t("spine.average") + " " + fmtTokens(totalCuts ? Math.round(totalSaved / totalCuts) : 0) }),
+          h(Kpi, { key: "sessions", label: t("spine.sessions"), value: String(num(global.sessions)), hint: t("spine.sessionsHint") }),
+          h(Kpi, { key: "top", label: t("spine.topKnife"), value: topKnife.kind ? t(KNIFE_LABEL[topKnife.kind]) : "—", hint: topKnife.kind ? fmtTokens(topKnife.saved) + " · " + shareText(topKnife.saved, totalSaved) : t("spine.none") }),
+          h(Kpi, { key: "attempts", label: t("spine.attempts"), value: String(num(attempts.cut)), hint: t("spine.skipped") + " " + String(num(attempts.cutSkip)) + " · " + t("spine.failed") + " " + String(num(attempts.failed)) }),
+          h(Kpi, { key: "since", label: t("spine.since"), value: global.since ? fmtDate(global.since) : "—", hint: t("spine.generated") + " " + fmtClock(global.generatedAt) }),
+        ]
+        : [
+          h(Kpi, { key: "saved", label: t("spine.saved"), value: fmtTokens(totalSaved), hint: t("spine.savedHint"), color: "#6F9FE8" }),
+          h(Kpi, { key: "count", label: t("spine.count"), value: String(totalCuts), hint: t("spine.average") + " " + fmtTokens(totalCuts ? Math.round(totalSaved / totalCuts) : 0) }),
+          h(Kpi, { key: "mine", label: t("spine.mine"), value: String(num(counterKinds.small) + num(counterKinds.merge) + num(counterKinds.plugin)), hint: t("spine.knifeSmall") + " " + String(num(counterKinds.small)) + " · " + t("spine.knifeMerge") + " " + String(num(counterKinds.merge)) }),
+          h(Kpi, { key: "official", label: t("spine.official"), value: String(num(counterKinds.official)), hint: fmtTokens(savedBy.official) + " " + t("spine.tokensShort") }),
+          h(Kpi, {
+            key: "biggest",
+            label: t("spine.biggest"),
+            value: biggestCut ? fmtTokens(biggestCut.tokens) : "—",
+            hint: biggestCut
+              ? t(KNIFE_LABEL[kindOfCut(biggestCut)]) + (biggestCut.start && biggestCut.end ? " " + biggestCut.start + "→" + biggestCut.end : "")
+              : t("spine.none"),
+          }),
+          h(Kpi, { key: "last", label: t("spine.last"), value: lastCut ? fmtClock(lastCut.time) : "—", hint: lastCut ? fmtTokens(lastCut.tokens) + " · " + t(KNIFE_LABEL[kindOfCut(lastCut)]) : t("spine.none") }),
+        ];
+      const composition = h("div", { className: "sp-card" },
+        h("div", { className: "sp-card-title" }, t("spine.composition"),
+          h("span", { className: "sp-card-sub" }, fmtTokens(totalSaved) + " " + t("spine.tokensShort") + " · " + String(totalCuts) + " " + t("spine.cutsUnit"))),
+        bars.length
+          ? h("div", { className: "sp-bar" }, bars.map((seg, index) => h("div", {
+            key: seg.row.kind + "-" + index,
+            className: "sp-seg",
+            style: { width: seg.width + "%", background: seg.color },
+            title: t(seg.row.labelKey) + " −" + fmtTokens(seg.row.saved) + " (" + shareText(seg.row.saved, totalSaved) + ")",
+          })))
+          : h("div", { className: "sp-empty" }, all ? t("spine.allEmpty") : t("spine.empty")),
+        bars.length
+          ? h("div", { className: "sp-legend" }, bars.map((seg) => h("span", { key: "lg-" + seg.row.kind },
+            h("span", { className: "sp-dot", style: { background: seg.color } }),
+            t(seg.row.labelKey), " ", fmtTokens(seg.row.saved), " ", shareText(seg.row.saved, totalSaved))))
+          : null);
+      const statsCard = h("div", { className: "sp-card" },
+        h("div", { className: "sp-card-title" }, t("spine.knifeStats"),
+          h("span", { className: "sp-card-sub" }, all ? t("spine.scopeHintAll") : t("spine.scopeHintNow"))),
+        h(KnifeTable, { t, rows, total: totalSaved }),
+        all
+          ? h("div", { className: "sp-foot" },
+            h("span", null, t("spine.attempts") + " " + String(num(attempts.cut))),
+            h("span", null, t("spine.skipped") + " " + String(num(attempts.cutSkip)) + " / " + String(num(attempts.mergeSkip))),
+            h("span", null, t("spine.official") + " " + String(num(attempts.official))),
+            h("span", null, t("spine.failed") + " " + String(num(attempts.failed))))
+          : null);
+      const timelineCard = sessionCuts.length
+        ? h("div", { className: "sp-card" },
+          h("div", { className: "sp-card-title" }, t("spine.timeline"),
+            h("span", { className: "sp-card-sub" }, fmtTokens(totalSaved) + " · " + String(sessionCuts.length) + " " + t("spine.cutsUnit"))),
+          h("div", { className: "sp-head" },
+            h("span", null, "#"),
+            h("span", null, t("spine.colKind")),
+            h("span", null, t("spine.colSeq")),
+            h("span", { className: "sp-num" }, t("spine.colTokens")),
+            h("span", null, t("spine.colModel")),
+            h("span", { className: "sp-num" }, t("spine.colTime")),
+            h("span", { className: "sp-num" }, t("spine.colFiles"))),
+          sessionCuts.map((cut, index) => ({ cut, index: index + 1 }))
+            .reverse()
+            .slice(0, 60)
+            .map((row) => h(CutRow, { key: row.cut.id + "-" + row.index, cut: row.cut, index: row.index, t, dir: state.shadowDir })))
+        : null;
+      const knob = (name) => {
+        const label = LABELS[name] || [name, ""];
+        const field = model && typeof model.field === "function"
+          ? (() => { try { return model.field(name) || {}; } catch { return {}; } })()
+          : {};
+        const resolved = Number(settings[name]);
+        const value = Number.isFinite(resolved) ? resolved : field.value;
+        return h(KnobInput, {
+          key: name,
+          t,
+          label: label[0],
+          hint: label[1],
+          disabled: !shell.writable || shell.saving,
+          overridden: Boolean(field.overridden),
+          value,
+          onEdit: (text) => { actions.edit?.(name, text); bump(); },
+          onReset: () => { actions.resetField?.(name); bump(); },
+        });
+      };
+      const knobsCard = h("div", { className: "sp-card" },
+        h("div", { className: "sp-card-title" }, t("spine.knobs"),
+          h("span", { className: "sp-card-sub" }, shell.writable ? t("spine.knobsHint") : t("spine.readOnly")),
+          h("button", {
+            className: "sp-btn sp-btn-primary",
+            disabled: !shell.writable || shell.saving,
+            onClick: () => { actions.save?.(); bump(); },
+          }, shell.saving ? t("saving") : t("save")),
+          h("button", {
+            className: "sp-btn",
+            disabled: !shell.writable || shell.saving,
+            onClick: () => { actions.discard?.(); bump(); },
+          }, t("discard"))),
+        KNOB_GROUPS.map((group) => h("div", { key: group.id, className: "sp-group" },
+          h("div", { className: "sp-group-title" },
+            t(group.title),
+            group.experimental ? h("span", { className: "sp-tag sp-tag-warn" }, t("spine.experimental")) : null),
+          group.hint ? h("div", { className: "sp-field-hint", style: { marginBottom: "8px" } }, t(group.hint)) : null,
+          group.enable
+            ? h("label", { className: "sp-switch" },
+              h("input", {
+                type: "checkbox",
+                checked: num(settings[group.enable]) > 0,
+                disabled: !shell.writable || shell.saving,
+                onChange: (event) => {
+                  actions.edit?.(group.enable, event.target.checked ? String(group.on) : "0");
+                  bump();
+                },
+              }),
+              h("span", null, t("spine.enableMid")))
+            : null,
+          h("div", { className: "sp-fields" }, group.keys.map(knob)))));
+      const docsCard = h("div", { className: "sp-card" },
+        h("div", { className: "sp-card-title" }, t("spine.docs"),
+          h("span", { className: "sp-card-sub" }, t("spine.docsHint"))),
+        h("div", null,
+          h(DocRow, { t, label: t("spine.docsReadme"), value: docs.readme }),
+          h(DocRow, { t, label: t("spine.docsChangelog"), value: docs.changelog }),
+          h(DocRow, { t, label: t("spine.docsRepo"), value: docs.repo, href: docs.repo }),
+          h(DocRow, { t, label: t("spine.docsIssues"), value: docs.issues, href: docs.issues }),
+          h(DocRow, { t, label: t("spine.version"), value: docs.version })));
+      const debugCard = h("details", { className: "sp-details sp-card" },
+        h("summary", { className: "sp-card-title" }, t("spine.debug"),
+          h("span", { className: "sp-card-sub" }, t("spine.debugHint"))),
+        h("div", { className: "sp-detail" },
+          h("div", { className: "sp-detail-row" },
+            h("span", { className: "sp-dim" }, t("spine.dirLabel")),
+            h("code", { className: "sp-path" }, state.shadowDir || "—"),
+            h("button", { className: "sp-btn", onClick: () => copyText(state.shadowDir || "") }, t("spine.copyDir"))),
+          h("div", { className: "sp-detail-row" },
+            h("span", { className: "sp-dim" }, t("spine.debugSid")),
+            h("code", { className: "sp-path" }, state.sid || "—"),
+            h("span", null)),
+          h("pre", { className: "sp-path", style: { margin: 0, whiteSpace: "pre-wrap" } },
+            t("spine.debugCounts") + " " + JSON.stringify({ kinds: counterKinds, savedBy })),
+          h("pre", { className: "sp-path", style: { margin: 0, whiteSpace: "pre-wrap" } },
+            t("spine.debugSettings") + " " + JSON.stringify(settings))));
+      return h("div", { className: "sp-root" },
+        topbar,
+        h("div", { className: "sp-grid" }, kpis),
+        composition,
+        statsCard,
+        timelineCard,
+        docsCard,
+        knobsCard,
+        debugCard);
+    }
+
+    function fmtDate(ms) {
+      const n = Number(ms) || 0;
+      if (!n) return "—";
+      const d = new Date(n);
+      const two = (v) => String(v).padStart(2, "0");
+      return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate());
+    }
+
+    /**
+     * 读投影：钩子照常无条件调用一次（顺序稳定），但它一旦抛错，槽位条目会被宿主
+     * 打成空白。这里把它兜成一条可见的错误提示。
+     */
+    function readProjection(props) {
+      if (typeof props.useProjection !== "function") return undefined;
+      try {
+        return props.useProjection(SPINE_KEY);
+      } catch (error) {
+        return { projectionError: String(error && error.message ? error.message : error) };
+      }
+    }
+
     function SpinePanel(props) {
       const t = props.t;
-      const build = () => {
-        const t = props.t;
-        const state = typeof props.useProjection === "function" ? props.useProjection(SPINE_KEY) : undefined;
-        const [, setTick] = React.useState(0);
-        const bump = () => setTick((value) => value + 1);
-        const model = props.model;
-        const actions = props.actions || {};
-        if (!state) return h("div", { className: "sp-root" }, h("div", { className: "sp-empty" }, t("spine.unavailable")));
-        const cuts = Array.isArray(state.cuts) ? state.cuts : [];
-        const stats = summarizeCuts(cuts);
-        const segments = barSegments(cuts);
-        const rows = cuts.map((cut, index) => ({ cut, index: index + 1 })).reverse();
-        const shell = model && typeof model.shell === "function" ? model.shell() : {};
-        const knob = (name) => {
-          const label = LABELS[name] || [name, ""];
-          const field = model && typeof model.field === "function" ? (() => { try { return model.field(name) || {}; } catch { return {}; } })() : {};
-          return h(KnobInput, {
-            key: name,
-            t,
-            label: label[0],
-            hint: label[1],
-            disabled: !shell.writable || shell.saving,
-            overridden: Boolean(field.overridden),
-            value: field.value,
-            onEdit: (text) => { actions.edit?.(name, text); bump(); },
-            onReset: () => { actions.resetField?.(name); bump(); },
-          });
-        };
-        return h("div", { className: "sp-root" },
-          h("div", { className: "sp-grid" },
-            h(Kpi, { label: t("spine.saved"), value: fmtTokens(stats.total), hint: t("spine.savedHint"), color: "#6F9FE8" }),
-            h(Kpi, { label: t("spine.count"), value: String(stats.count), hint: t("spine.average") + " " + fmtTokens(stats.average) }),
-            h(Kpi, { label: t("spine.mine"), value: String(stats.spineCount), hint: fmtTokens(stats.spineTokens) + " " + t("spine.tokensShort") }),
-            h(Kpi, { label: t("spine.official"), value: String(stats.officialCount), hint: fmtTokens(stats.officialTokens) + " " + t("spine.tokensShort") }),
-            h(Kpi, { label: t("spine.biggest"), value: stats.biggest ? fmtTokens(stats.biggest.tokens) : "—", hint: stats.biggest ? "seq " + stats.biggest.start + "→" + stats.biggest.end : t("spine.none") }),
-            h(Kpi, { label: t("spine.last"), value: stats.last ? fmtClock(stats.last.time) : "—", hint: stats.last ? fmtTokens(stats.last.tokens) : t("spine.none") })),
-          h("div", { className: "sp-card" },
-            h("div", { className: "sp-card-title" }, t("spine.composition"),
-              h("span", { className: "sp-card-sub" }, t("spine.files") + " " + String(stats.files))),
-            segments.length
-              ? h("div", { className: "sp-bar" }, segments.map((segment, index) => h("div", {
-                key: segment.cut.id + "-" + index,
-                className: "sp-seg",
-                style: { width: segment.width + "%", background: segment.color },
-                title: (segment.cut.kind === "spine" ? t("spine.kindMine") : t("spine.kindOfficial")) + " −" + fmtTokens(segment.cut.tokens) + " (seq " + segment.cut.start + "→" + segment.cut.end + ")",
-              })))
-              : h("div", { className: "sp-empty" }, t("spine.empty")),
-            segments.length
-              ? h("div", { className: "sp-legend" },
-                h("span", null, h("span", { className: "sp-dot", style: { background: CUT_COLOR.spine } }), t("spine.kindMine"), " ", fmtTokens(stats.spineTokens)),
-                h("span", null, h("span", { className: "sp-dot", style: { background: CUT_COLOR.official } }), t("spine.kindOfficial"), " ", fmtTokens(stats.officialTokens)))
-              : null),
-          h("div", { className: "sp-card" },
-            h("div", { className: "sp-card-title" }, t("spine.timeline"),
-              h("span", { className: "sp-card-sub" }, fmtTokens(stats.total) + " · " + String(stats.count) + " " + t("spine.cutsUnit"))),
-            rows.length
-              ? h("div", null,
-                h("div", { className: "sp-head" },
-                  h("span", { className: "sp-num" }, "#"),
-                  h("span", null, t("spine.colKind")),
-                  h("span", null, t("spine.colTokens")),
-                  h("span", null, t("spine.colSeq")),
-                  h("span", null, t("spine.colModel")),
-                  h("span", null, t("spine.colTime")),
-                  h("span", { className: "sp-num" }, t("spine.colFiles"))),
-                rows.slice(0, 60).map((row) => h(CutRow, { key: row.cut.id + "-" + row.index, cut: row.cut, index: row.index, t, dir: state.shadowDir })))
-              : h("div", { className: "sp-empty" }, t("spine.empty"))),
-          h("div", { className: "sp-card" },
-            h("div", { className: "sp-card-title" }, t("spine.knobs"),
-              h("span", { className: "sp-card-sub" }, shell.writable ? t("spine.knobsHint") : t("spine.readOnly")),
-              h("button", { className: "sp-btn sp-btn-primary", disabled: !shell.writable || shell.saving, onClick: () => { actions.save?.(); bump(); } }, shell.saving ? t("saving") : t("save")),
-              h("button", { className: "sp-btn", disabled: !shell.writable || shell.saving, onClick: () => { actions.discard?.(); bump(); } }, t("discard"))),
-            KNOB_GROUPS.map((group) => h("div", { key: group.id, className: "sp-group" },
-              h("div", { className: "sp-group-title" }, group.title),
-              h("div", { className: "sp-fields" }, group.keys.map(knob))))),
-          state.shadowDir
-            ? h("div", { className: "sp-foot" },
-              h("span", null, t("spine.dirLabel")),
-              h("code", { className: "sp-path" }, state.shadowDir),
-              h("button", { className: "sp-btn", onClick: () => copyText(state.shadowDir) }, t("spine.copyDir")))
-            : null);
-      };
+      // 钩子必须在最外层，且每次渲染顺序一致：渲染体抛错也不能少调一个钩子。
+      const state = readProjection(props);
+      const [tick, setTick] = React.useState(0);
+      const [scope, setScope] = React.useState("session");
       try {
-        return build();
+        if (state && state.projectionError) throw new Error(state.projectionError);
+        return renderPanel(props, state, scope, () => setTick(tick + 1), setScope);
       } catch (error) {
         // 渲染期抛错会把整条槽位条目打成空白：兜底成一条可见提示，别让人看到白屏。
         console.error('spine: panel render failed', error);
-        return h('div', { className: 'sp-root' },
-          h('div', { className: 'sp-card' },
-            h('div', { className: 'sp-card-title' }, t('spine.knobs')),
-            h('div', { className: 'sp-empty' }, t('spine.error') + ' ' + String(error && error.message ? error.message : error))));
+        return h("div", { className: "sp-root" },
+          h("div", { className: "sp-card" },
+            h("div", { className: "sp-card-title" }, t("spine.knobs")),
+            h("div", { className: "sp-empty" }, t("spine.error") + " " + String(error && error.message ? error.message : error))));
       }
     }
 
@@ -548,7 +935,11 @@ window.__ModuleLoader__.load({
         }, "live-compact: cuts panel");
       },
       // 只是给本地测试用的出口；加载器只认 inject / apply。
-      __test: { summarizeCuts, barSegments, fmtTokens, fmtClock, SpinePanel, SPINE_CSS },
+      __test: {
+        summarizeCuts, barSegments, kindBars, kindOfCut, shareText, readProjection,
+        fmtTokens, fmtClock, renderPanel, SpinePanel, SPINE_CSS,
+        KNIFE_COLOR, KNOB_GROUPS, MID_ON,
+      },
     };
   },
 });
