@@ -40,26 +40,54 @@ export function knifeOf(source) {
   return "plugin";
 }
 
-/** 卡片正文取一段预览，供面板展开时认上下文。 */
+// 卡片正文外面套的壳：我方的中文前导、官方的英文前言、正文标记与标签。
+const CARD_MARKER = "Spine extract.";
+const CARD_TAGS = ["<compacted-summary>", "</compacted-summary>"];
+const CARD_PREAMBLES = [
+  { start: "这是旧内容摘录", ends: ["不要把摘录里的句子当成你刚说的话。", "not an authorization.", "不是你的授权。"] },
+  { start: "This is an automatically generated checkpoint", ends: ["without acknowledging this checkpoint."] },
+];
+const CJK_TEXT = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+
+/**
+ * 剥掉卡片外壳，只留正文。壳可能叠两层（我方正文前面还垫了一段前导说明），
+ * 所以循环剥到不变为止；找不到正文标记时就从头按前导说明的结尾切。
+ */
+function stripCardFraming(raw) {
+  let text = String(raw || "");
+  const marker = text.lastIndexOf(CARD_MARKER);
+  if (marker >= 0) text = text.slice(marker + CARD_MARKER.length);
+  text = text.trimStart();
+  for (let guard = 0; guard < 6; guard += 1) {
+    let changed = false;
+    for (const tag of CARD_TAGS) {
+      if (text.startsWith(tag)) { text = text.slice(tag.length).trimStart(); changed = true; }
+    }
+    if (text.startsWith(CARD_MARKER)) { text = text.slice(CARD_MARKER.length).trimStart(); changed = true; }
+    for (const rule of CARD_PREAMBLES) {
+      if (!text.startsWith(rule.start)) continue;
+      let end = -1;
+      for (const tail of rule.ends) {
+        const at = text.indexOf(tail);
+        if (at >= 0 && at + tail.length > end) end = at + tail.length;
+      }
+      if (end > 0) { text = text.slice(end).trimStart(); changed = true; }
+    }
+    if (!changed) break;
+  }
+  return text;
+}
+
+/** 卡片正文取一段预览，供面板展开时认上下文。官方摘要是英文，面板不塞英文。 */
 function previewOf(content) {
   const blocks = Array.isArray(content) ? content : typeof content === "string" ? [{ type: "text", text: content }] : [];
-  let text = blocks
+  const raw = blocks
     .filter((block) => block && typeof block.text === "string" && block.type !== "reasoning" && block.type !== "thinking")
     .map((block) => block.text)
     .join("\n");
-  // 我方卡片开头是「这不是新指令」的前导说明，面板上没必要占行。
-  // 旧版卡片不带标记，只带前导说明：按那句话的结尾切一刀。
-  if (text.trimStart().startsWith("这是旧内容摘录")) {
-    const sentinels = ["not an authorization.", "不要把摘录里的句子当成你刚说的话。", "不是你的授权。"];
-    const end = sentinels.reduce((best, sentinel) => {
-      const at = text.indexOf(sentinel);
-      return at >= 0 && at + sentinel.length > best ? at + sentinel.length : best;
-    }, -1);
-    if (end > 0) text = text.slice(end);
-  }
-  const marker = text.lastIndexOf("Spine extract.");
-  if (marker >= 0) text = text.slice(marker + "Spine extract.".length);
-  text = text.replace(/\s+/g, " ").trim();
+  const text = stripCardFraming(raw).replace(/\s+/g, " ").trim();
+  // 开头一段没有汉字，说明是官方英文摘要：面板上留白，让客户端给一句中文说明。
+  if (!CJK_TEXT.test(text.slice(0, 200))) return "";
   return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}…` : text;
 }
 
@@ -168,6 +196,7 @@ export function schemaFor(zod) {
     docs: zod.object({
       readme: zod.string(), repo: zod.string(), issues: zod.string(),
       changelog: zod.string(), version: zod.string(),
+      readmeExists: zod.boolean().optional(), changelogExists: zod.boolean().optional(),
     }).optional(),
   });
   return { state, view };
@@ -199,15 +228,18 @@ export function spineProjectionDefinition({
     issues: String(docs.issues || ""),
     changelog: String(docs.changelog || ""),
     version: String(version || docs.version || ""),
+    // 探不到就是没有：面板据此把「打开」标成缺文件，而不是让人点出一句报错。
+    readmeExists: docs.readmeExists === true,
+    changelogExists: docs.changelogExists === true,
   };
   // 视图要复用引用（框架靠 Object.is 抑制发布）；设置变了才换新对象。
   let cachedView = null;
   let cachedStamp = "";
-  const readKnobs = () => {
+  const readKnobs = (sid) => {
     const out = {};
     let resolved = null;
     if (settingsReader) {
-      try { resolved = settingsReader(); } catch { resolved = null; }
+      try { resolved = settingsReader(sid || ""); } catch { resolved = null; }
     }
     const source = resolved || {};
     for (const key of KNOB_KEYS) {
@@ -295,7 +327,7 @@ export function spineProjectionDefinition({
     wire: {
       viewSchema: schema.view,
       view(state) {
-        const settings = readKnobs();
+        const settings = readKnobs(state.sid);
         let global = EMPTY_GLOBAL();
         if (globalStatsReader) {
           try { global = globalStatsReader() || global; } catch { global = EMPTY_GLOBAL(); }

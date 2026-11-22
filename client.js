@@ -40,33 +40,249 @@ window.__ModuleLoader__.load({
     };
     const LABELS = {
       minTokens: ["起切 token 数", "默认 20000"],
-      pointerTokens: ["大结果只留指针", "0 = 跟随一刀上限"],
+      pointerTokens: ["大结果只留指针", "超大的工具结果只留一行指针"],
       keepRounds: ["保留原文轮数", "至少 1 轮，默认 3"],
       chunkMin: ["一刀最小 token", "默认 1000"],
       chunkMax: ["一刀最大 token", "默认 32000"],
       keepRoundTokens: ["收尾停止线", "默认 32000"],
       bigGate: ["绝对停切线", "默认 650000"],
-      cooldownMs: ["官方压缩后冷却 ms", "0 = 只跳过一次"],
+      cooldownMs: ["官方压缩后冷却（毫秒）", "0 = 只跳过一次"],
       thresholdRatio: ["官方大压缩触发比例", "默认 0.8"],
       headroomTokens: ["官方大压缩预留", "默认 65536"],
       retainTokens: ["官方大压缩保留", "默认 8192"],
       compactionRetries: ["官方大压缩重试", "默认 0"],
       minNetGain: ["净收益门槛", "切掉−卡片 不到这个数就不切"],
       burstCuts: ["一次连切", "收尾时最多连切几刀"],
-      deepCutAbove: ["中刀启用线", "上下文超过它才试中刀；0 = 关闭"],
+      deepCutAbove: ["中刀启用线", "上下文超过它才试中刀（实验性，开启前请确认风险）"],
       mergeMaxSpan: ["中刀窗口", "chunkMax × 它；默认 4 = 128k"],
       mergeBreakEven: ["中刀回本倍数", "一次性重算 / 净赚 超过它就不切"],
-      mergeCooldownMs: ["中刀冷却 ms", "两刀中刀之间的最小间隔"],
-      officialAbove: ["大刀启用线", "超过它且没有可切段时请官方压缩；0 = 关"],
-      officialCooldownMs: ["大刀冷却 ms", "两次大压缩的最小间隔"],
-      paybackTurns: ["小刀回本轮数", "重算超过 净赚×它 就不切；0 = 关"],
-      spanBandRatio: ["动态刀长比例", "单刀上限 = 上下文 × 它；0 = 关"],
+      mergeCooldownMs: ["中刀冷却（毫秒）", "两刀中刀之间的最小间隔"],
+      officialAbove: ["大刀启用线", "超过它且没有可切段时请官方压缩"],
+      officialCooldownMs: ["大刀冷却（毫秒）", "两次大压缩的最小间隔"],
+      paybackTurns: ["小刀回本轮数", "重算超过 净赚×它 就不切"],
+      spanBandRatio: ["动态刀长比例", "单刀上限 = 上下文 × 它"],
       keepRounds: ["保留原文轮数", "最近几轮留原文"],
       keepRoundTokens: ["收尾停止线", "降到这个 token 就不切"],
       bigGate: ["绝对停切线", "超过即不再小切"],
       chunkMax: ["一刀上限", "小刀一次最多切多少"],
       chunkMin: ["一刀下限", "不够就不切"],
     };
+
+    /**
+     * 每个旋钮的参考范围。面板直接把「范围 / 常用」印在输入框下面，
+     * 不让人对着一格空数字猜。off 表示这个旋钮有「关」这个状态：
+     * 滑块不再从 0 开始，而是给一个能用的下限，启用/关闭放到旁边的小勾选框里。
+     */
+    const KNOB_META = {
+      // min/max 是能拖到的上下限（也是滑块的物理边界），step 是拖动一格的大小。
+      // 上下限按本机能遇到的范围定：比如本机上下文最多几十万，大刀启用线给到 1M 没有意义，
+      // 冷却时间也不允许调到 0（会变成每轮都压一次）。
+      minTokens: { min: 5000, max: 200000, usual: [20000, 60000], step: 1000 },
+      pointerTokens: { min: 0, max: 64000, usual: [16000, 32000], step: 1000, zero: "spine.zeroPointer" },
+      keepRounds: { min: 1, max: 10, usual: [2, 5], step: 1 },
+      chunkMin: { min: 1000, max: 20000, usual: [1000, 4000], step: 100 },
+      chunkMax: { min: 8000, max: 128000, usual: [16000, 48000], step: 1000 },
+      keepRoundTokens: { min: 8000, max: 200000, usual: [16000, 48000], step: 1000 },
+      bigGate: { min: 100000, max: 1000000, usual: [400000, 650000], step: 50000 },
+      cooldownMs: { min: 0, max: 600000, usual: [0, 600000], step: 10000 },
+      minNetGain: { min: 500, max: 50000, usual: [2000, 8000], step: 500, off: true, onValue: 3000 },
+      burstCuts: { min: 1, max: 10, usual: [1, 4], step: 1 },
+      deepCutAbove: { min: 100000, max: 650000, usual: [120000, 250000], step: 10000, off: true, onValue: 120000, noToggle: true },
+      mergeMaxSpan: { min: 1, max: 16, usual: [3, 6], step: 1 },
+      mergeBreakEven: { min: 1, max: 10, usual: [2, 4], step: 1 },
+      mergeCooldownMs: { min: 60000, max: 3600000, usual: [300000, 1200000], step: 60000 },
+      officialAbove: { min: 200000, max: 650000, usual: [200000, 450000], step: 10000, off: true, onValue: 300000 },
+      officialCooldownMs: { min: 60000, max: 7200000, usual: [600000, 3600000], step: 60000 },
+      paybackTurns: { min: 1, max: 30, usual: [2, 10], step: 1, off: true, onValue: 8 },
+      spanBandRatio: { min: 0.01, max: 0.5, usual: [0.02, 0.12], step: 0.01, off: true, onValue: 0.06 },
+    };
+
+    /**
+     * 预设档：只改刀法策略这几项，中刀那几项一律不碰（它还没验收，默认关着）。
+     * 点预设只是填草稿，还要点保存才生效——误点一下不会把配置改坏。
+     */
+    const PRESETS = [
+      // 推荐档：出厂值里那四把刀全是关的，日常别用出厂档。这里给一套能跑的：
+      // 小刀常开、回本 8 轮、刀长按上下文 6% 缩、45 万请官方收；中刀仍不碰。
+      {
+        id: "recommended",
+        label: "spine.presetRecommended",
+        hint: "spine.presetRecommendedHint",
+        values: {
+          minTokens: 20000, keepRounds: 3, keepRoundTokens: 32000, chunkMin: 1000, chunkMax: 32000,
+          burstCuts: 3, minNetGain: 3000, paybackTurns: 8, spanBandRatio: 0.06,
+          officialAbove: 450000, bigGate: 650000,
+        },
+      },
+      {
+        id: "smallFirst",
+        label: "spine.presetSmallFirst",
+        hint: "spine.presetSmallFirstHint",
+        values: {
+          minTokens: 20000, keepRounds: 3, keepRoundTokens: 32000, chunkMin: 1000, chunkMax: 32000,
+          burstCuts: 4, minNetGain: 2000, paybackTurns: 4, spanBandRatio: 0,
+          officialAbove: 600000, bigGate: 650000,
+        },
+      },
+      {
+        id: "bigFirst",
+        label: "spine.presetBigFirst",
+        hint: "spine.presetBigFirstHint",
+        values: {
+          minTokens: 30000, keepRounds: 3, keepRoundTokens: 32000, chunkMin: 2000, chunkMax: 32000,
+          burstCuts: 1, minNetGain: 4000, paybackTurns: 10, spanBandRatio: 0.04,
+          officialAbove: 200000, bigGate: 650000,
+        },
+      },
+    ];
+
+    // ---- 面板设置通道 ----
+    // 走宿主 configForms 的话，这个命名空间一旦没被登记成可编辑表单，勾选框和保存
+    // 按钮点下去只会安静地失败（save 被吞掉，界面也不动）。这条桥写的是引擎每回合
+    // 真正读的 ~/.dsh/spine-settings.json，成了给时间戳，败了把原因原样贴出来。
+    const SETTINGS_BRIDGE = "api/dsh-live-compact-x-settings";
+    // 路由注册的是这个前缀本身（不在后面拼 /describe）：宿主的路由表是精确匹配，
+    // 多一段就落到 /api 的兜底上，浏览器拿到的是 SPA 的 404 页面。
+    const bridgeUrl = () => {
+      try { return new URL(SETTINGS_BRIDGE, document.baseURI).toString(); }
+      catch { return "/" + SETTINGS_BRIDGE; }
+    };
+    const postBridge = async (op, body) => {
+      const response = await fetch(bridgeUrl(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ op, ...(body || {}) }),
+        credentials: "same-origin",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!payload || typeof payload !== "object") {
+        throw new Error("宿主返回了无法解析的响应（HTTP " + response.status + "）");
+      }
+      return payload;
+    };
+
+    /**
+     * 面板自己的配置草稿：值来自桥，草稿留在本地，保存整批写文件。
+     * 组件通过 useSyncExternalStore 订阅，所以每改一格滑块都会立刻重画，不用 bump。
+     */
+    function createSettingsStore() {
+      let snapshot = {
+        status: "idle", error: "", effective: {}, defaults: {}, overrides: {}, fixed: {}, file: "",
+        draft: {}, saving: false, savedAt: 0, saveError: "",
+        doc: null, docLoading: false, docError: "",
+        sw: null, swSaving: false, swSavedAt: 0, swError: "", sid: "",
+        presets: null, presetSaving: false, presetError: "",
+      };
+      const listeners = new Set();
+      const publish = (patch) => {
+        snapshot = { ...snapshot, ...patch };
+        for (const fn of [...listeners]) { try { fn(); } catch {} }
+      };
+      const store = {
+        getSnapshot: () => snapshot,
+        subscribe(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
+        dirty(name) { return Object.prototype.hasOwnProperty.call(snapshot.draft, name); },
+        async load(sid) {
+          const key = typeof sid === "string" ? sid : "";
+          if (snapshot.status === "loading") return;
+          if (snapshot.status === "ready" && snapshot.sid === key) return;
+          publish({ status: "loading", error: "", sid: key });
+          try {
+            const payload = await postBridge("describe", { op: "describe", sid: key });
+            if (!payload.ok) throw new Error(payload.message || payload.code || "配置通道不可用");
+            const { switch: sw, ...rest } = payload.value || {};
+            publish({ status: "ready", error: "", ...rest, sw: sw || null, sid: key });
+          } catch (error) {
+            publish({ status: "unavailable", error: String(error && error.message ? error.message : error) });
+          }
+        },
+        edit(name, text) { publish({ draft: { ...snapshot.draft, [name]: String(text) }, saveError: "" }); },
+        reset(name) {
+          const fallback = snapshot.defaults[name];
+          if (fallback === undefined) return;
+          publish({ draft: { ...snapshot.draft, [name]: String(fallback) }, saveError: "" });
+        },
+        setMany(values) {
+          const next = { ...snapshot.draft };
+          for (const [name, value] of Object.entries(values || {})) next[name] = String(value);
+          publish({ draft: next, saveError: "" });
+        },
+        discard() { publish({ draft: {}, saveError: "" }); },
+        async persist(patch) {
+          if (snapshot.saving) return false;
+          const keys = Object.keys(patch || {});
+          if (!keys.length) return false;
+          publish({ saving: true, saveError: "" });
+          try {
+            const payload = await postBridge("save", { op: "save", patch });
+            if (!payload.ok) throw new Error(payload.message || payload.code || "保存失败");
+            const { switch: sw, ...rest } = payload.value || {};
+            publish({ status: "ready", saving: false, error: "", savedAt: rest.savedAt || Date.now(), ...rest, sw: sw || snapshot.sw, draft: {} });
+            return true;
+          } catch (error) {
+            publish({ saving: false, saveError: String(error && error.message ? error.message : error) });
+            return false;
+          }
+        },
+        async save() {
+          const patch = {};
+          for (const [name, value] of Object.entries(snapshot.draft)) patch[name] = value === null ? null : value;
+          return store.persist(patch);
+        },
+        async saveNow(values) { return store.persist({ ...values }); },
+        // 总开关：本会话 / 全部会话。关掉后引擎下一回合就停手，文件里也记着，重启还在。
+        async setSwitch(scope, enabled, sid) {
+          if (snapshot.swSaving) return false;
+          publish({ swSaving: true, swError: "" });
+          try {
+            const payload = await postBridge("switch", { op: "switch", scope, enabled, sid });
+            if (!payload.ok) throw new Error(payload.message || payload.code || "切换失败");
+            publish({ swSaving: false, sw: payload.value.switch || snapshot.sw, swSavedAt: payload.value.savedAt || Date.now(), swError: "" });
+            return true;
+          } catch (error) {
+            publish({ swSaving: false, swError: String(error && error.message ? error.message : error) });
+            return false;
+          }
+        },
+        /**
+         * 自定义档：存/套用/删都走一条通道，服务端会回一份新的 describe，
+         * 所以旋钮显示会跟着「生效中的档」一起更新，草稿清空。
+         */
+        async preset(op, body) {
+          if (snapshot.presetSaving) return false;
+          publish({ presetSaving: true, presetError: "" });
+          try {
+            const payload = await postBridge(op, { op, ...body, sid: snapshot.sid });
+            if (!payload.ok) throw new Error(payload.message || payload.code || "档位操作失败");
+            const { switch: sw, ...rest } = payload.value || {};
+            publish({ status: "ready", presetSaving: false, error: "", ...rest, sw: sw || snapshot.sw, draft: {} });
+            return true;
+          } catch (error) {
+            publish({ presetSaving: false, presetError: String(error && error.message ? error.message : error) });
+            return false;
+          }
+        },
+        savePreset(scope, name) {
+          const draft = snapshot.draft;
+          const values = Object.keys(draft).length ? draft : snapshot.effective;
+          return store.preset("preset-save", { scope, name, values });
+        },
+        applyPreset(scope, id) { return store.preset("preset-apply", { scope, id: id || "" }); },
+        deletePreset(scope, id) { return store.preset("preset-delete", { scope, id }); },
+        async openDoc(which) {
+          if (snapshot.doc && snapshot.doc.which === which) { publish({ doc: null, docError: "" }); return; }
+          publish({ docLoading: true, docError: "" });
+          try {
+            const payload = await postBridge("doc", { op: "doc", which });
+            if (!payload.ok) throw new Error(payload.message || payload.code || "读不到文档");
+            publish({ docLoading: false, doc: { which, ...payload.value } });
+          } catch (error) {
+            publish({ docLoading: false, docError: String(error && error.message ? error.message : error) });
+          }
+        },
+      };
+      return store;
+    }
 
     const zh = {
       takeoverPresets: "接管官方预设",
@@ -98,11 +314,68 @@ window.__ModuleLoader__.load({
       "spine.noFiles": "这一刀没有留备份文件。",
       "spine.copy": "复制",
       "spine.copyDir": "复制目录",
+      "spine.open": "打开",
+      "spine.reveal": "所在位置",
+      "spine.openOk": "已打开",
+      "spine.openFail": "打不开，路径已复制",
+      "spine.preview": "预览",
+      "spine.previewLoading": "正在读…",
+      "spine.previewTruncated": "只显示前 4 万字，完整内容看文件。",
+      "spine.previewFailed": "读不到：",
+      "spine.copyPath": "复制路径",
+      "spine.cfgLoading": "正在连配置通道…",
+      "spine.cfgDown": "配置通道不通：",
+      "spine.cfgReady": "配置通道就绪",
+      "spine.savedAt": "已保存",
+      "spine.saveFailed": "保存失败：",
+      "spine.draftPending": "草稿还没保存",
+      "spine.cfgFixed": "这一项被 profile 配置固定，改文件不生效",
+      "spine.fixedTag": "固定",
+      "spine.cfgFallback": "现在走宿主设置表单；重启 DSH 后切换成文件直写",
+      "spine.hostRefused": "宿主没有受理这次写入",
+      "spine.settingsFile": "设置文件",
+      "spine.cfgChannel": "配置通道",
+      "spine.channelFile": "文件直写",
+      "spine.channelDown": "不通",
+      "spine.reloadPage": "刷新",
+      "spine.switchSession": "本会话压缩",
+      "spine.switchAll": "全部会话压缩",
+      "spine.switchHint": "关掉后这个范围里不再用小刀 / 中刀 / 大刀，也不再主动请官方压缩；下一回合生效，重启也记得",
+      "spine.switchFailed": "切换失败：",
+      "spine.on": "开",
+      "spine.offShort": "关",
+      "spine.reloadHint": "重新加载这个页面（桌面端 Ctrl+R 没绑，F12 开发者工具里也能刷）",
+
+      "spine.previewEnglish": "官方摘要原文是英文，面板不转述；正文看聊天里那张卡。",
+      "spine.missing": "文件不在",
       "spine.knobs": "刀把",
       "spine.cutPoint": "切点",
-      "spine.presetDefault": "默认档",
+      "spine.presetRecommended": "推荐档",
+      "spine.presetRecommendedHint": "小刀常开、回本 8 轮、刀长按上下文 6%、45 万请官方收；中刀仍关（实验性，要开请单独确认）",
       "spine.presetCustom": "自定义档",
-      "spine.presetDefaultOn": "现在是默认档，点开可改",
+      "spine.presetAdd": "＋",
+      "spine.presetAddHint": "把现在这套值存成一个自定义档，可以只给本会话、本工作区或全部会话用",
+      "spine.presetFormTitle": "存成自定义档",
+      "spine.presetNamePlaceholder": "档名，例如：夜间省流",
+      "spine.presetScopeSession": "本会话",
+      "spine.presetScopeWorkspace": "本工作区",
+      "spine.presetScopeAll": "全部会话",
+      "spine.presetScopeSessionHint": "只在这一条会话里用这套值，别的会话不受影响",
+      "spine.presetScopeWorkspaceHint": "这个工作区里的所有会话都用这套值",
+      "spine.presetScopeAllHint": "所有会话都用这套值（换工作区也带着）",
+      "spine.presetWorkspaceUnknown": "当前工作区没认出来：工作区档暂时存不了，先选本会话或全部会话",
+      "spine.presetSave": "存成新档",
+      "spine.presetCancel": "取消",
+      "spine.presetDelete": "删除这个档",
+      "spine.presetDeleteAgain": "再点一次删除",
+      "spine.presetClear": "取消套用",
+      "spine.presetLayer": "当前生效",
+      "spine.presetSaveTarget": "保存写回",
+      "spine.presetFailed": "档位操作失败：",
+      "spine.presetChipHint": "点一下套用，再点一下取消；",
+      "spine.presetTagSession": "会话",
+      "spine.presetTagWorkspace": "工作区",
+      "spine.presetTagAll": "全部",
       "spine.knobsHint": "点开调刀把，改完点保存才生效",
       "spine.readOnly": "当前配置只读",
       "spine.dirLabel": "备份目录",
@@ -152,7 +425,7 @@ window.__ModuleLoader__.load({
       "spine.groupMidHint": "上下文很大时，把连续的老卡片并成一张；不省钱就不动。",
       "spine.groupBigHint": "前两把刀都切不动时，才请官方压缩接手。",
       "spine.docs": "文档与出处",
-      "spine.docsHint": "点复制带走路径",
+      "spine.docsHint": "点开看文档，或复制路径",
       "spine.docsReadme": "README",
       "spine.docsChangelog": "更新记录",
       "spine.docsRepo": "仓库",
@@ -163,6 +436,9 @@ window.__ModuleLoader__.load({
       "spine.debugSid": "会话 ID",
       "spine.debugCounts": "计数",
       "spine.debugSettings": "生效设置",
+      "spine.copyJson": "复制 JSON",
+      "spine.copyCounts": "复制计数 JSON",
+      "spine.copySettings": "复制设置 JSON",
       "spine.sessions": "会话数",
       "spine.sessionsHint": "有切刀记录的会话",
       "spine.since": "最早记录",
@@ -171,6 +447,26 @@ window.__ModuleLoader__.load({
       "spine.skipped": "跳过",
       "spine.failed": "失败",
       "spine.allEmpty": "还没有任何会话切过内容。",
+      "spine.rangeLabel": "范围",
+      "spine.usualLabel": "常用",
+      "spine.zeroOff": "0 = 关",
+      "spine.zeroPointer": "0 = 跟随一刀上限",
+      "spine.presetSmallFirst": "小刀优先",
+      "spine.presetSmallFirstHint": "小刀多切、大刀推迟到 60 万：细节更连续，上下文会更大",
+      "spine.presetBigFirst": "大刀优先",
+      "spine.presetBigFirstHint": "小刀少切、20 万就让官方大刀收：上下文压得低，细节靠摘要",
+      "spine.presetDraftHint": "预设只填草稿，点保存才生效",
+      "spine.expandRest": "展开其余",
+      "spine.onlyRecent": "只看最近",
+      "spine.enable": "启用",
+      "spine.offState": "关",
+      "spine.toggleHint": "勾上才生效；取消勾选 = 关",
+      "spine.midWarnTitle": "中刀还没验收",
+      "spine.midWarnBody": "它会把连续的老卡片并成一张，一次性重算几十 k 上下文。实测在真实会话里 16 次尝试全被拦下，一次都没落地；开了可能变慢，也可能切出更大的卡片。不建议日常开。",
+      "spine.midWarnAck": "我明白风险，仍然要开启",
+      "spine.midConfirm": "确认开启",
+      "spine.midCancel": "先不改",
+      "spine.valueOut": "当前值超出滑块范围，拖动会落回范围内",
     };
     const en = {
       takeoverPresets: "Take over official presets",
@@ -202,11 +498,68 @@ window.__ModuleLoader__.load({
       "spine.noFiles": "This cut kept no backup file.",
       "spine.copy": "Copy",
       "spine.copyDir": "Copy folder",
+      "spine.open": "Open",
+      "spine.reveal": "Reveal",
+      "spine.openOk": "Opened",
+      "spine.openFail": "Cannot open; path copied",
+      "spine.preview": "Preview",
+      "spine.previewLoading": "Reading…",
+      "spine.previewTruncated": "Showing the first 40k characters; open the file for the rest.",
+      "spine.previewFailed": "Cannot read: ",
+      "spine.copyPath": "Copy path",
+      "spine.cfgLoading": "Connecting to the settings channel…",
+      "spine.cfgDown": "Settings channel unavailable: ",
+      "spine.cfgReady": "Settings channel ready",
+      "spine.savedAt": "Saved",
+      "spine.saveFailed": "Save failed: ",
+      "spine.draftPending": "Draft not saved yet",
+      "spine.cfgFixed": "This field is pinned by the profile config; editing the file has no effect",
+      "spine.fixedTag": "pinned",
+      "spine.cfgFallback": "using the host settings form; restart DSH to switch to direct file writes",
+      "spine.hostRefused": "the host rejected this write",
+      "spine.settingsFile": "Settings file",
+      "spine.cfgChannel": "Settings channel",
+      "spine.channelFile": "direct file write",
+      "spine.channelDown": "down",
+      "spine.reloadPage": "Reload",
+      "spine.switchSession": "This session",
+      "spine.switchAll": "All sessions",
+      "spine.switchHint": "Turned off, this scope stops using the small/merge/big cuts and stops asking for official compaction; applies next turn and survives restarts",
+      "spine.switchFailed": "Switch failed: ",
+      "spine.on": "on",
+      "spine.offShort": "off",
+      "spine.reloadHint": "Reload this page (Desktop does not bind Ctrl+R)",
+
+      "spine.previewEnglish": "Official summaries are English; read the card in the chat.",
+      "spine.missing": "Missing",
       "spine.knobs": "Knobs",
       "spine.cutPoint": "Cut points",
-      "spine.presetDefault": "Defaults",
+      "spine.presetRecommended": "Recommended",
+      "spine.presetRecommendedHint": "Small cuts on, payback 8 turns, span at 6% of context, official handover at 450k; the merge cut stays off",
       "spine.presetCustom": "Custom",
-      "spine.presetDefaultOn": "On defaults — expand to edit",
+      "spine.presetAdd": "＋",
+      "spine.presetAddHint": "Save the current values as a custom preset for this session, this workspace, or all sessions",
+      "spine.presetFormTitle": "Save as custom preset",
+      "spine.presetNamePlaceholder": "Name, e.g. night mode",
+      "spine.presetScopeSession": "This session",
+      "spine.presetScopeWorkspace": "This workspace",
+      "spine.presetScopeAll": "All sessions",
+      "spine.presetScopeSessionHint": "Only this session uses these values; other sessions stay untouched",
+      "spine.presetScopeWorkspaceHint": "Every session in this workspace uses these values",
+      "spine.presetScopeAllHint": "Every session uses these values",
+      "spine.presetWorkspaceUnknown": "Workspace not recognised, so workspace presets are unavailable; pick this session or all sessions",
+      "spine.presetSave": "Save preset",
+      "spine.presetCancel": "Cancel",
+      "spine.presetDelete": "Delete this preset",
+      "spine.presetDeleteAgain": "Click again to delete",
+      "spine.presetClear": "Clear",
+      "spine.presetLayer": "Active",
+      "spine.presetSaveTarget": "Save writes to",
+      "spine.presetFailed": "Preset failed: ",
+      "spine.presetChipHint": "Click to apply, click again to clear;",
+      "spine.presetTagSession": "session",
+      "spine.presetTagWorkspace": "workspace",
+      "spine.presetTagAll": "all",
       "spine.knobsHint": "Expand to tune, then save",
       "spine.readOnly": "Configuration is read-only",
       "spine.dirLabel": "Backup folder",
@@ -256,7 +609,7 @@ window.__ModuleLoader__.load({
       "spine.groupMidHint": "When the context is huge, joins continuous old cards; skips unless it pays off.",
       "spine.groupBigHint": "Only when the first two knives cannot cut, the official summary takes over.",
       "spine.docs": "Docs",
-      "spine.docsHint": "copy any path",
+      "spine.docsHint": "open or copy a path",
       "spine.docsReadme": "README",
       "spine.docsChangelog": "Changelog",
       "spine.docsRepo": "Repo",
@@ -267,6 +620,9 @@ window.__ModuleLoader__.load({
       "spine.debugSid": "Session ID",
       "spine.debugCounts": "Counters",
       "spine.debugSettings": "Effective settings",
+      "spine.copyJson": "Copy JSON",
+      "spine.copyCounts": "Copy counter JSON",
+      "spine.copySettings": "Copy settings JSON",
       "spine.sessions": "Sessions",
       "spine.sessionsHint": "sessions with cuts",
       "spine.since": "Since",
@@ -275,17 +631,46 @@ window.__ModuleLoader__.load({
       "spine.skipped": "skipped",
       "spine.failed": "failed",
       "spine.allEmpty": "No session has cut anything yet.",
+      "spine.rangeLabel": "range",
+      "spine.usualLabel": "typical",
+      "spine.zeroOff": "0 = off",
+      "spine.zeroPointer": "0 = follow the knife cap",
+      "spine.presetSmallFirst": "Small first",
+      "spine.presetSmallFirstHint": "More small cuts, big cut delayed to 600k: more continuity, bigger context",
+      "spine.presetBigFirst": "Big first",
+      "spine.presetBigFirstHint": "Fewer small cuts, official big cut at 200k: lower context, details via summary",
+      "spine.presetDraftHint": "Presets only fill the draft; save to apply",
+      "spine.expandRest": "Show the other",
+      "spine.onlyRecent": "Only the newest",
+      "spine.enable": "on",
+      "spine.offState": "off",
+      "spine.toggleHint": "Check to use it; uncheck to turn it off",
+      "spine.midWarnTitle": "The merge cut is unproven",
+      "spine.midWarnBody": "It joins consecutive old cards into one and recomputes tens of thousands of tokens at once. In real sessions all 16 attempts were blocked and it never fired; it can slow turns down or produce a bigger card. Not recommended for daily use.",
+      "spine.midWarnAck": "I understand the risk and still want it on",
+      "spine.midConfirm": "Turn on",
+      "spine.midCancel": "Not now",
+      "spine.valueOut": "The current value is outside the slider range; dragging clamps it",
     };
 
     const SPINE_KEY = "spine.cuts";
     const SPINE_CSS = [
-      ".sp-root{box-sizing:border-box;height:100%;overflow-y:auto;padding:12px 14px 26px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5}",
+      ".sp-root{box-sizing:border-box;height:100%;min-height:0;flex:1 1 auto;overflow-y:auto;padding:12px 14px 24px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5}",
+      // 这个页签整页铺开：宿主看到 data-conversation-composer-overlay 会把 viewArea 撑满、
+      // 把输入条改成绝对定位，同时收掉正文两侧的宽度拖拽条。再按我们自己的标记把输入条藏掉，
+      // 只影响压缩页——轨迹页也用了同一个属性，不能按它一刀切。
+      "[data-conversation-scroll]:has([data-spine-cover])>[data-composer-seat]{display:none!important}",
       ".sp-topbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}",
       ".sp-scope{display:inline-flex;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
       ".sp-docrow>.sp-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}",
       ".sp-scope-btn{font:inherit;font-size:12px;padding:3px 13px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}",
       ".sp-scope-btn[data-on='1']{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);font-weight:600}",
       ".sp-topbar-sub{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
+      ".sp-topbar-reload{margin-left:8px;flex:none;font-size:11px;padding:2px 9px}",
+      ".sp-master{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:2px 10px;background:var(--dsw-alias-bg-layer-2);cursor:pointer;user-select:none}",
+      ".sp-master-on{color:var(--dsw-alias-label-primary)}",
+      ".sp-master:not(.sp-master-on){border-color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-border-l1))}",
+      ".sp-master-state{font-weight:600;font-variant-numeric:tabular-nums}",
       ".sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-bottom:10px}",
       ".sp-kpi{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:8px 10px;min-width:0}",
       ".sp-kpi-label{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
@@ -296,6 +681,10 @@ window.__ModuleLoader__.load({
       ".sp-card-sub{margin-left:auto;font-weight:400;font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
       ".sp-bar{display:flex;gap:2px;height:22px;border-radius:6px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
       ".sp-seg{height:100%;min-width:2px}",
+      ".sp-bar-cut{gap:0}",
+      ".sp-bar-cut .sp-seg{flex-shrink:1;box-shadow:inset -1px 0 0 rgba(0,0,0,.45)}",
+      ".sp-bar-cut .sp-seg:last-child{box-shadow:none}",
+      ".sp-bar-cut .sp-seg-first{margin-left:2px}",
       ".sp-seg:hover{opacity:.72}",
       ".sp-legend{display:flex;flex-wrap:wrap;gap:12px 16px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:8px;font-variant-numeric:tabular-nums}",
       ".sp-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}",
@@ -305,8 +694,10 @@ window.__ModuleLoader__.load({
       ".sp-trow:hover{background:var(--dsw-alias-interactive-bg-hover)}",
       ".sp-trow-off{opacity:.55}",
       ".sp-knife{display:flex;align-items:center;min-width:0}",
-      ".sp-head{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 54px 26px;gap:10px;padding:0 6px 4px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
-      ".sp-row{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 54px 26px;gap:10px;align-items:center;padding:4px 6px;border-radius:6px;font-size:12px}",
+      ".sp-head{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 54px 26px 12px;gap:10px;padding:0 6px 4px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
+      ".sp-row{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 54px 26px 12px;gap:10px;align-items:center;padding:1px 6px;border-radius:6px;font-size:11.5px;line-height:1.6}",
+      ".sp-scroll-tall{max-height:420px;overflow-y:auto;overscroll-behavior:contain}",
+      ".sp-tl-more{display:flex;justify-content:center;margin-top:6px}",
       ".sp-head>span,.sp-row>span,.sp-trow>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
       ".sp-row:hover{background:var(--dsw-alias-interactive-bg-hover)}",
       ".sp-badge{font-size:10.5px;line-height:17px;padding:0 6px;border-radius:999px;border:1px solid;text-align:center;white-space:nowrap}",
@@ -314,6 +705,15 @@ window.__ModuleLoader__.load({
       ".sp-num{text-align:right;font-variant-numeric:tabular-nums}",
       ".sp-dim{color:var(--dsw-alias-label-secondary)}",
       ".sp-details summary{list-style:none;cursor:pointer}",
+      ".sp-chev{display:inline-block;width:12px;flex:0 0 auto;text-align:center;font-size:11px;line-height:1;color:var(--dsw-alias-label-secondary);transition:transform .12s ease}",
+      ".sp-details[open]>summary .sp-chev{transform:rotate(90deg)}",
+      ".sp-details summary:hover .sp-chev{color:var(--dsw-alias-label-primary)}",
+      ".sp-dbg-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-top:6px}",
+      ".sp-dbg-line{font-size:11.5px;margin:2px 0 0}",
+      ".sp-dbg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:2px 14px;font-size:11px}",
+      ".sp-dbg-row{display:flex;justify-content:space-between;gap:8px;padding:1px 0;border-bottom:1px dashed var(--dsw-alias-border-l2)}",
+      ".sp-dbg-row>span:first-child{color:var(--dsw-alias-label-secondary)}",
+      ".sp-dbg-row>span:last-child{font-variant-numeric:tabular-nums}",
       ".sp-details summary::-webkit-details-marker{display:none}",
       ".sp-detail{display:grid;gap:6px;padding:6px 8px 8px;border-top:1px dashed var(--dsw-alias-border-l2)}",
       ".sp-preview{margin:0;font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-secondary);max-height:104px;overflow:hidden}",
@@ -344,15 +744,64 @@ window.__ModuleLoader__.load({
       ".sp-path{font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all}",
       ".sp-docrow{display:grid;grid-template-columns:76px 1fr auto;gap:8px;align-items:center;padding:3px 0;border-bottom:1px dashed var(--dsw-alias-border-l2)}",
       ".sp-docrow:last-child{border-bottom:0}",
+      ".sp-docactions{display:inline-flex;align-items:center;gap:6px;justify-self:end}",
+      ".sp-docnote{grid-column:1/-1;font-size:10.5px;line-height:1.4;color:var(--dsw-alias-label-secondary)}",
+      ".sp-docmiss{border-color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-border-l2));color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-label-secondary))}",
       ".sp-doclabel{font-size:11px;color:var(--dsw-alias-label-secondary)}",
+      ".sp-docpre{grid-column:1/-1;max-height:260px;overflow:auto;margin:4px 0 6px;padding:8px 10px;border-radius:6px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l2)}",
+      ".sp-docpre>pre{margin:0;font:inherit;font-size:11px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-secondary)}",
+      ".sp-channel{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:2px 0 10px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary)}",
+      ".sp-channel-label{color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));flex:none}",
+      ".sp-channel-text{overflow-wrap:anywhere}",
+      ".sp-channel-bad{color:var(--dsw-alias-state-warning-primary,#C88A2E)}",
+      ".sp-val{font-size:11px;color:var(--dsw-alias-label-primary)}",
       ".sp-doclink{color:var(--dsw-alias-state-business-primary);text-decoration:none}",
       ".sp-detail-row{display:grid;grid-template-columns:88px 1fr auto;gap:8px;align-items:center;font-size:11.5px}",
       ".sp-preset{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px}",
+      ".sp-field-head>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+      ".sp-value{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums;white-space:nowrap}",
+      ".sp-value-out{color:var(--dsw-alias-state-warning-primary,#C88A2E)}",
+      ".sp-value-off{color:var(--dsw-alias-label-secondary);font-weight:400}",
+      ".sp-mini{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--dsw-alias-label-secondary);cursor:pointer;user-select:none;flex:0 0 auto}",
+      ".sp-mini input{margin:0}",
+      ".sp-mini-on{color:var(--dsw-alias-label-primary)}",
+      ".sp-range{flex:1 1 auto;width:100%;height:14px;margin:0;padding:0;background:transparent;cursor:pointer;accent-color:var(--dsw-alias-state-business-primary,#6F9FE8)}",
+      ".sp-range:disabled{opacity:.45;cursor:not-allowed}",
+      ".sp-range-ends{display:flex;justify-content:space-between;font-size:10px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;margin-top:-2px}",
+      ".sp-preset-row{gap:5px}",
+      ".sp-preset-hint{font-size:11px;color:var(--dsw-alias-label-secondary);margin-right:auto}",
+      ".sp-btn-plus{font-weight:700;min-width:26px;justify-content:center;padding:2px 6px}",
+      ".sp-btn-mini{font-size:10px;padding:1px 6px}",
+      ".sp-preset-custom{margin-top:-4px}",
+      ".sp-chip{display:inline-flex;align-items:center;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}",
+      ".sp-chip-on{border-color:transparent;background:var(--dsw-alias-button-primary-fill)}",
+      ".sp-chip-on .sp-chip-btn,.sp-chip-on .sp-chip-tag{color:var(--dsw-alias-label-primary-foreground);opacity:1}",
+      ".sp-chip-on .sp-chip-x{color:var(--dsw-alias-label-primary-foreground);opacity:.75}",
+      ".sp-chip-ask{border-color:var(--dsw-alias-state-warning-primary,#C88A2E)}",
+      ".sp-chip-btn{font:inherit;font-size:11px;display:inline-flex;align-items:center;gap:5px;padding:2px 4px 2px 9px;border:0;background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;white-space:nowrap}",
+      ".sp-chip-btn:disabled{opacity:.45;cursor:not-allowed}",
+      ".sp-chip-name{max-width:120px;overflow:hidden;text-overflow:ellipsis}",
+      ".sp-chip-tag{font-size:10px;opacity:.7}",
+      ".sp-chip-x{font:inherit;font-size:12px;line-height:1;padding:1px 6px 3px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}",
+      ".sp-chip-x:hover{color:var(--dsw-alias-state-warning-primary,#C88A2E)}",
+      ".sp-preset-active{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-bottom:10px;padding:4px 8px;border-radius:6px;background:var(--dsw-alias-bg-layer-2)}",
+      ".sp-preset-active>span{margin-right:auto}",
+      ".sp-preset-form{display:flex;flex-direction:column;gap:8px;padding:10px;margin-bottom:10px;border:1px dashed var(--dsw-alias-border-l2);border-radius:8px}",
+      ".sp-form-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-primary)}",
+      ".sp-scope-row{display:flex;gap:6px;flex-wrap:wrap}",
+      ".sp-preset-form .sp-preset{margin-bottom:0}",
+      ".sp-field-range{font-size:10.5px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}",
+      ".sp-warn{margin:6px 0 10px;padding:8px 10px;border-radius:8px;border:1px solid var(--dsw-alias-state-warning-primary,#C88A2E);background:rgba(200,138,46,.08)}",
+      ".sp-warn-title{font-size:12px;font-weight:600;color:var(--dsw-alias-state-warning-primary,#C88A2E);margin-bottom:4px}",
+      ".sp-warn-body{font-size:11px;line-height:1.55;color:var(--dsw-alias-label-secondary);margin-bottom:6px}",
+      ".sp-warn-actions{display:flex;align-items:center;gap:6px}",
       ".sp-note{margin-top:8px;padding-top:7px;border-top:1px dashed var(--dsw-alias-border-l2);font-size:10.5px;line-height:1.6;color:var(--dsw-alias-label-secondary)}",
     ].join("\n");
     // 五类刀法：小刀 / 中刀 / 大刀 都是本插件动的手（大刀借用官方摘要），
     // 官方是插件接管前后的原生压缩，旧卡片是我们早期没记刀名的卡。
     const KNIFE_ORDER = ["small", "merge", "big", "official", "plugin"];
+    const CJK_TEXT = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+
     const KNIFE_COLOR = {
       small: "#6F9FE8", merge: "#9B7BE8", big: "#E0A35E", official: "#8A8F98", plugin: "#6FBFA8",
     };
@@ -371,6 +820,8 @@ window.__ModuleLoader__.load({
     const SEP = String.fromCharCode(92);
     /** 打开中刀时写进 deepCutAbove 的默认门槛：上下文超过 12 万 token 才试。 */
     const MID_ON = 120000;
+    /** 时间线默认只画最近几刀；几十刀全铺开会把面板撑成一条长龙。 */
+    const TL_PREVIEW = 10;
     const KNOB_GROUPS = [
       {
         id: "small",
@@ -431,6 +882,30 @@ window.__ModuleLoader__.load({
       return String(Math.round(n));
     }
 
+    /** 旋钮值的显示单位：毫秒转时间、比例转百分比，其余按 token 格式。 */
+    function fmtKnobValue(name, value) {
+      const n = Number(value) || 0;
+      if (String(name).endsWith("Ms")) {
+        if (!n) return "0";
+        if (n < 60000) return Math.round(n / 1000) + "s";
+        if (n < 3600000) return Math.round(n / 60000) + "min";
+        return (n / 3600000).toFixed(n % 3600000 ? 1 : 0) + "h";
+      }
+      if (name === "spanBandRatio") return n ? (n * 100).toFixed(n < 0.1 ? 1 : 0) + "%" : "0";
+      return fmtTokens(n);
+    }
+
+    /** 一行「范围 … · 常用 …」，0 有特殊含义的旋钮再补一句。 */
+    function knobRange(t, name) {
+      const meta = KNOB_META[name];
+      if (!meta) return "";
+      const span = (from, to) => fmtKnobValue(name, from) + "–" + fmtKnobValue(name, to);
+      let text = t("spine.rangeLabel") + " " + span(meta.min, meta.max)
+        + " · " + t("spine.usualLabel") + " " + span(meta.usual[0], meta.usual[1]);
+      if (meta.zero) text += " · " + t(meta.zero);
+      return text;
+    }
+
     function fmtClock(ms) {
       const n = Number(ms) || 0;
       if (!n) return "—";
@@ -443,6 +918,49 @@ window.__ModuleLoader__.load({
       try {
         if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) void navigator.clipboard.writeText(text);
       } catch {}
+    }
+
+    // 路径是「这台机器上的东西」：面板只露尾巴，完整路径留在 title 与复制里。
+    function shortPath(value) {
+      const text = String(value || "");
+      if (!text) return "";
+      const sep = text.indexOf("\\") >= 0 ? "\\" : "/";
+      const parts = text.split(sep).filter(Boolean);
+      if (parts.length <= 4) return text;
+      return "…" + sep + parts.slice(-3).join(sep);
+    }
+
+    /**
+     * 打开本机文件：走宿主自己的 remote（和「在文件夹中显示」同一套），不自己起进程。
+     * 纯 Web 宿主 / 旧宿主拿不到服务，就当打不开，调用方退回复制路径——不会白点。
+     */
+    let bridgeCtx = null;
+
+    function setBridgeCtx(ctx) {
+      bridgeCtx = ctx || null;
+    }
+
+    function openHostPath(path, action) {
+      return Promise.resolve().then(() => {
+        const target = String(path || "");
+        if (!target) return { ok: false, reason: "empty" };
+        let remote = null;
+        try {
+          remote = bridgeCtx && typeof bridgeCtx.get === "function" ? bridgeCtx.get("remote") : null;
+        } catch {
+          remote = null;
+        }
+        const session = remote && remote.session;
+        if (!session || typeof session.openWorkspacePath !== "function") return { ok: false, reason: "no-remote" };
+        const request = action === "reveal" ? { path: target, action: "reveal" } : { path: target };
+        return Promise.resolve(session.openWorkspacePath(request)).then(
+          (result) => {
+            const ok = !!(result && (result.ok === true || result.opened === true));
+            return ok ? { ok: true, reason: "" } : { ok: false, reason: "refused" };
+          },
+          () => ({ ok: false, reason: "rejected" }),
+        );
+      }).catch(() => ({ ok: false, reason: "threw" }));
     }
 
     /** 一刀属于哪把刀。老数据只有 spine / official 两种 kind，spine 当时就是小刀。 */
@@ -502,6 +1020,27 @@ window.__ModuleLoader__.load({
       }));
     }
 
+    /**
+     * 构成条按「一刀一段」画：同一种刀聚在一起，刀与刀之间留分割线，
+     * 免得几刀同色糊成一条看不出切了几下。
+     */
+    function cutBars(cuts) {
+      const list = (Array.isArray(cuts) ? cuts : []).filter((cut) => num(cut.tokens) > 0);
+      if (!list.length) return [];
+      const out = [];
+      for (const kind of KNIFE_ORDER) {
+        const mine = list.filter((cut) => kindOfCut(cut) === kind);
+        mine.forEach((cut, index) => out.push({
+          cut,
+          kind,
+          grow: num(cut.tokens),
+          color: KNIFE_COLOR[kind] || "var(--dsw-alias-label-secondary)",
+          first: index === 0 && out.length > 0,
+        }));
+      }
+      return out;
+    }
+
     /** 按刀法汇总的构成条：小刀 / 中刀 / 大刀 / 旧卡各一段。 */
     function kindBars(rows) {
       const list = (Array.isArray(rows) ? rows : []).filter((row) => num(row.saved) > 0);
@@ -537,30 +1076,127 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 自己的旋钮输入。文档明确：不要把宿主原语组件（SettingsValueField 之类）
-     * 放进自己的槽位里——它一旦抛错，整个槽位条目就变成空白。这里只借配置表单模型
-     * 的读写面，控件自己画。
+     * 自己的旋钮：用滑块而不是数字框。
+     *
+     * 数字框的问题是「填不了也不知道该填多少」：键盘输一半就重算、不合法就悄悄吞掉，
+     * 用户只能猜。滑块的上下限直接来自 KNOB_META，拖到哪就是哪，拖不动的地方就是
+     * 不允许的值（冷却最低 1 分钟、大刀启用线最高 65 万），一眼看得出边界在哪。
+     *
+     * 位置放在组件自己的 state 里：拖动时立刻跟手，不用等配置模型回写；
+     * 外部值只作为初始位置（重开面板拿最新值）。
      */
     function KnobInput(props) {
-      const { t, label, hint, disabled, overridden, value, onEdit, onReset } = props;
-      const [text, setText] = React.useState(String(value ?? ""));
-      return h("label", { className: "sp-field" },
+      const { t, name, label, hint, range, meta, disabled, overridden, fixed, value, onEdit, onReset, onToggle } = props;
+      const lo = Number(meta && meta.min);
+      const hi = Number(meta && meta.max);
+      const gapped = Number.isFinite(lo) && Number.isFinite(hi) && hi > lo;
+      const step = meta && Number(meta.step) > 0 ? Number(meta.step) : 1;
+      const raw = Number(value);
+      // 「关」= 这个旋钮的 off 状态（值 0）。既然 0 不再出现在滑块上，关掉就交给旁边的小勾。
+      const isOff = Boolean(meta && meta.off) && !(Number.isFinite(raw) && raw > 0);
+      const showToggle = Boolean(meta && meta.off && !meta.noToggle);
+      const outside = !isOff && Number.isFinite(raw) && gapped && (raw < lo || raw > hi);
+      const start = gapped ? Math.min(hi, Math.max(lo, Number.isFinite(raw) ? raw : lo)) : (Number.isFinite(raw) ? raw : 0);
+      const [pos, setPos] = React.useState(start);
+      // 外部改了值（点预设、按复位、桥加载完）要让滑块跟过去；拖动时值也是自己写回去的，
+      // 这条同步只会在「值真的变了」时触发一次。
+      const lastExternal = React.useRef(start);
+      React.useEffect(() => {
+        if (start === lastExternal.current) return;
+        lastExternal.current = start;
+        setPos(start);
+      }, [start]);
+      const shown = Number.isFinite(pos) ? pos : start;
+      return h("div", { className: "sp-field" },
         h("div", { className: "sp-field-head" },
-          h("span", null, label),
-          overridden ? h("span", { className: "sp-tag" }, t("overridden")) : null),
+          h("span", { className: "sp-field-title", title: label }, label),
+          showToggle
+            ? h("label", { className: "sp-mini" + (isOff ? "" : " sp-mini-on"), title: t("spine.toggleHint") },
+              h("input", {
+                type: "checkbox",
+                "data-knob": name,
+                "aria-label": label,
+                checked: !isOff,
+                disabled,
+                onChange: (event) => onToggle?.(Boolean(event.target.checked)),
+              }),
+              h("span", null, t("spine.enable")))
+            : null,
+          overridden ? h("span", { className: "sp-tag" }, t("overridden")) : null,
+          fixed ? h("span", { className: "sp-tag sp-tag-warn", title: t("spine.cfgFixed") }, t("spine.fixedTag")) : null,
+          h("span", {
+            className: "sp-value" + (outside ? " sp-value-out" : "") + (isOff ? " sp-value-off" : ""),
+            title: outside ? t("spine.valueOut") : "",
+          }, isOff ? t("spine.offState") : fmtKnobValue(name, outside ? raw : shown))),
         h("div", { className: "sp-field-row" },
           h("input", {
-            className: "sp-input",
-            type: "number",
-            value: text,
-            disabled,
+            className: "sp-range",
+            type: "range",
+            "data-knob": name,
+            min: String(gapped ? lo : 0),
+            max: String(gapped ? hi : 100),
+            step: String(step),
+            value: String(isOff ? (gapped ? lo : 0) : shown),
+            disabled: Boolean(disabled) || isOff,
             onChange: (event) => {
-              setText(event.target.value);
-              onEdit(event.target.value);
+              const next = Number(event.target.value);
+              if (!Number.isFinite(next)) return;
+              setPos(next);
+              onEdit(String(next));
             },
           }),
           overridden ? h("button", { className: "sp-btn", disabled, onClick: onReset }, t("reset")) : null),
-        hint ? h("div", { className: "sp-field-hint" }, hint) : null);
+        h("div", { className: "sp-range-ends" },
+          h("span", null, gapped ? fmtKnobValue(name, lo) : ""),
+          h("span", null, gapped ? fmtKnobValue(name, hi) : "")),
+        hint ? h("div", { className: "sp-field-hint" }, hint) : null,
+        range ? h("div", { className: "sp-field-range" }, range) : null);
+    }
+
+    /**
+     * 中刀开关：打开时先弹一段风险说明，勾了「我明白」才能点确认，二次确认后才写配置。
+     * 关掉是一键的——关永远不该被拦。确认状态放在面板层，展开/收起不会把它弄丢。
+     */
+    function MidSwitch(props) {
+      const { t, on, disabled, ask, ack, onOpen, onClose, onAck, onOff, onEnable } = props;
+      return h("div", null,
+        h("label", { className: "sp-switch" },
+          h("input", {
+            type: "checkbox",
+            checked: Boolean(on),
+            disabled,
+            onChange: (event) => { if (event.target.checked) onOpen?.(); else onOff?.(); },
+          }),
+          h("span", null, t("spine.enableMid")),
+          h("span", { className: "sp-tag sp-tag-warn" }, t("spine.experimental"))),
+        ask
+          ? h("div", { className: "sp-warn" },
+            h("div", { className: "sp-warn-title" }, t("spine.midWarnTitle")),
+            h("div", { className: "sp-warn-body" }, t("spine.midWarnBody")),
+            h("label", { className: "sp-switch" },
+              h("input", {
+                type: "checkbox",
+                checked: Boolean(ack),
+                disabled,
+                onChange: (event) => onAck?.(Boolean(event.target.checked)),
+              }),
+              h("span", null, t("spine.midWarnAck"))),
+            h("div", { className: "sp-warn-actions" },
+              h("button", {
+                className: "sp-btn sp-btn-primary",
+                disabled: disabled || !ack,
+                onClick: () => onEnable?.(),
+              }, t("spine.midConfirm")),
+              h("button", { className: "sp-btn", disabled, onClick: () => onClose?.() }, t("spine.midCancel"))))
+          : null);
+    }
+
+    /** 展开指示：收起点是 ▸，展开后由 CSS 转 90°。宿主不画 details 的默认三角，得自己给。 */
+    function Chevron(props) {
+      return h("span", {
+        className: "sp-chev" + (props.className ? " " + props.className : ""),
+        "aria-hidden": "true",
+      }, "▸");
     }
 
     function KnifeBadge(props) {
@@ -577,6 +1213,10 @@ window.__ModuleLoader__.load({
       const { cut, t, dir, index } = props;
       const kind = kindOfCut(cut);
       const files = Array.isArray(cut.rawNames) ? cut.rawNames : [];
+      // 官方摘要正文是英文：面板不糊英文，给一句中文说明。
+      const preview = String(cut.preview || "");
+      const previewText = CJK_TEXT.test(preview) ? preview : "";
+      const englishOnly = !previewText && (kind === "official" || kind === "big");
       const sep = String(dir || "").includes(SEP) ? SEP : "/";
       const range = cut.start && cut.end ? cut.start + "→" + cut.end : "—";
       return h("details", { className: "sp-details" },
@@ -587,9 +1227,12 @@ window.__ModuleLoader__.load({
           h("span", { className: "sp-num sp-mono" }, fmtTokens(cut.tokens)),
           h("span", { className: "sp-dim", title: cut.model || cut.provider || "" }, cut.model || cut.provider || "—"),
           h("span", { className: "sp-dim sp-num" }, fmtClock(cut.time)),
-          h("span", { className: "sp-num sp-dim" }, files.length ? String(files.length) : "—")),
+          h("span", { className: "sp-num sp-dim" }, files.length ? String(files.length) : "—"),
+          h(Chevron, { className: "sp-chev-row" })),
         h("div", { className: "sp-detail" },
-          cut.preview ? h("p", { className: "sp-preview" }, cut.preview) : null,
+          previewText
+            ? h("p", { className: "sp-preview" }, previewText)
+            : englishOnly ? h("p", { className: "sp-preview sp-dim" }, t("spine.previewEnglish")) : null,
           files.length
             ? h("ul", { className: "sp-files" }, files.map((name) => h("li", { key: name },
               h("code", { className: "sp-path", style: { flex: "1 1 auto" } }, name),
@@ -620,24 +1263,56 @@ window.__ModuleLoader__.load({
           h("span", { className: "sp-num sp-mono" }, row.cuts ? fmtTokens(Math.round(row.saved / row.cuts)) : "—"))));
     }
 
+    /**
+     * 文档一行：文件行给「预览 / 复制路径」，地址行给「复制」（链接自己就能点开）。
+     * 不再放「打开」：宿主只肯打开工作区里的路径，插件目录在 profiles 下，按钮注定失败。
+     * 预览走同一条设置桥把正文读回来，直接铺在行下面——看得见，才是真能看。
+     */
     function DocRow(props) {
-      const { t, label, value, href } = props;
+      const { t, label, value, href, exists, which, preview, onPreview, loading } = props;
       if (!value) return null;
+      const missing = which ? exists === false : false;
+      const shown = which ? shortPath(value) : value;
+      const body = href
+        ? h("a", { className: "sp-path sp-doclink", href, target: "_blank", rel: "noreferrer", title: value }, shown)
+        : h("code", { className: "sp-path", title: value }, shown);
+      const buttons = [];
+      if (which) {
+        buttons.push(h("button", {
+          key: "preview",
+          className: "sp-btn",
+          disabled: missing || loading,
+          onClick: () => onPreview && onPreview(which),
+        }, loading ? t("spine.previewLoading") : t("spine.preview")));
+        buttons.push(h("button", { key: "copy", className: "sp-btn", onClick: () => copyText(value) }, t("spine.copyPath")));
+      } else if (href) {
+        buttons.push(h("button", { key: "copy", className: "sp-btn", onClick: () => copyText(value) }, t("spine.copy")));
+      }
+      const open = preview && preview.which === which ? preview : null;
       return h("div", { className: "sp-docrow" },
         h("span", { className: "sp-doclabel" }, label),
-        href
-          ? h("a", { className: "sp-path sp-doclink", href, target: "_blank", rel: "noreferrer", title: value }, value)
-          : h("code", { className: "sp-path", title: value }, value),
-        h("button", { className: "sp-btn", onClick: () => copyText(value) }, t("spine.copy")));
+        body,
+        h("span", { className: "sp-docactions" }, buttons),
+        missing ? h("span", { className: "sp-docnote sp-docmiss" }, t("spine.missing")) : null,
+        open && open.text
+          ? h("div", { className: "sp-docpre" },
+            h("pre", null, open.text),
+            open.truncated ? h("div", { className: "sp-docnote" }, t("spine.previewTruncated")) : null)
+          : null);
     }
-    function renderPanel(props, state, scope, bump, setScope) {
+    function renderPanel(props, state, scope, bump, setScope, mid, ui) {
       const t = props.t;
       const model = props.model;
       const actions = props.actions || {};
+      // 面板的配置走自己的桥（cfg），设置页那份 configForms 模型只作后备。
+      // shell() 抛错 = 状态未知，按只读处理（降级）。
+      const cfg = (ui && ui.cfg) || null;
+      const store = (ui && ui.store) || null;
       const shell = model && typeof model.shell === "function"
-        ? (() => { try { return model.shell() || {}; } catch { return {}; } })()
-        : {};
+        ? (() => { try { return model.shell() || {}; } catch { return null; } })()
+        : null;
       const all = scope === "all";
+      const timelineAll = Boolean(ui && ui.timelineAll);
       const global = (state && state.global) || {};
       const sessionCuts = Array.isArray(state && state.cuts) ? state.cuts : [];
       const settings = (state && state.settings) || {};
@@ -646,6 +1321,27 @@ window.__ModuleLoader__.load({
       const subtitle = all
         ? t("spine.scopeAllHint") + " " + fmtClock(global.generatedAt)
         : t("spine.scopeSessionHint");
+      // 总开关：作用在「当前范围」上——看本会话就关本会话，切到全部会话就关全部。
+      const swState = (cfg && cfg.sw) || null;
+      const switchReady = Boolean(store && cfg && cfg.status === "ready");
+      const masterOn = swState ? Boolean(all ? swState.global : swState.session) : true;
+      const masterBusy = Boolean(cfg && (cfg.swSaving || cfg.saving));
+      const masterSwitch = h("label", {
+        className: "sp-master" + (masterOn ? " sp-master-on" : ""),
+        title: t("spine.switchHint"),
+      },
+        h("input", {
+          type: "checkbox",
+          "data-master": all ? "all" : "session",
+          checked: masterOn,
+          disabled: !switchReady || masterBusy,
+          onChange: (event) => {
+            const next = Boolean(event.target.checked);
+            if (store) void store.setSwitch(all ? "all" : "session", next, state && state.sid);
+          },
+        }),
+        h("span", { className: "sp-master-label" }, t(all ? "spine.switchAll" : "spine.switchSession")),
+        h("span", { className: "sp-master-state" }, masterOn ? t("spine.on") : t("spine.offShort")));
       const topbar = h("div", { className: "sp-topbar" },
         h("div", { className: "sp-scope" },
           h("button", {
@@ -658,9 +1354,15 @@ window.__ModuleLoader__.load({
             "data-on": all ? "1" : "0",
             onClick: () => setScope("all"),
           }, t("spine.scopeAll"))),
-        h("span", { className: "sp-topbar-sub" }, subtitle));
+        swState ? masterSwitch : null,
+        h("span", { className: "sp-topbar-sub" }, subtitle),
+        h("button", {
+          className: "sp-btn sp-topbar-reload",
+          title: t("spine.reloadHint"),
+          onClick: () => { try { globalThis.location?.reload?.(); } catch {} },
+        }, t("spine.reloadPage")));
       if (!state) {
-        return h("div", { className: "sp-root", ref: rootRef }, topbar,
+        return h("div", { className: "sp-root", ref: rootRef, "data-spine-cover": "", "data-conversation-composer-overlay": "" }, topbar,
           h("div", { className: "sp-empty" }, t("spine.unavailable")));
       }
       // 计数优先用投影给的累计值（不吃 40 刀上限）；没有就按当前时间线自己算。
@@ -695,6 +1397,8 @@ window.__ModuleLoader__.load({
       const totalSaved = rows.reduce((sum, row) => sum + row.saved, 0);
       const totalCuts = rows.reduce((sum, row) => sum + row.cuts, 0);
       const bars = kindBars(rows);
+      // 本会话有逐刀记录：条上按刀切段；全部会话只有按刀法的汇总，仍按刀法分段。
+      const slices = all ? [] : cutBars(sessionCuts);
       // 本会话看「最大的一刀」，全部会话没有逐刀记录，改看「量最大的一把刀」。
       const topKnife = rows.reduce((best, row) => (row.saved > best.saved ? row : best), { saved: 0, kind: "", cuts: 0 });
       const biggestCut = sessionCuts.reduce(
@@ -734,14 +1438,24 @@ window.__ModuleLoader__.load({
       const composition = h("div", { className: "sp-card" },
         h("div", { className: "sp-card-title" }, t("spine.composition"),
           h("span", { className: "sp-card-sub" }, fmtTokens(totalSaved) + " " + t("spine.tokensShort") + " · " + String(totalCuts) + " " + t("spine.cutsUnit"))),
-        bars.length
-          ? h("div", { className: "sp-bar" }, bars.map((seg, index) => h("div", {
-            key: seg.row.kind + "-" + index,
-            className: "sp-seg",
-            style: { width: seg.width + "%", background: seg.color },
-            title: t(seg.row.labelKey) + " −" + fmtTokens(seg.row.saved) + " (" + shareText(seg.row.saved, totalSaved) + ")",
+        slices.length
+          ? h("div", { className: "sp-bar sp-bar-cut" }, slices.map((seg, index) => h("div", {
+            key: "cut-seg-" + index,
+            className: seg.first ? "sp-seg sp-seg-first" : "sp-seg",
+            style: { flexGrow: String(seg.grow), flexBasis: "0", background: seg.color },
+            title: t(KNIFE_LABEL[seg.kind]) + " −" + fmtTokens(seg.cut.tokens)
+              + " (" + shareText(seg.cut.tokens, totalSaved) + ")"
+              + " · " + (seg.cut.start && seg.cut.end ? seg.cut.start + "→" + seg.cut.end : "—")
+              + " · " + fmtClock(seg.cut.time),
           })))
-          : h("div", { className: "sp-empty" }, all ? t("spine.allEmpty") : t("spine.empty")),
+          : bars.length
+            ? h("div", { className: "sp-bar" }, bars.map((seg, index) => h("div", {
+              key: seg.row.kind + "-" + index,
+              className: "sp-seg",
+              style: { width: seg.width + "%", background: seg.color },
+              title: t(seg.row.labelKey) + " −" + fmtTokens(seg.row.saved) + " (" + shareText(seg.row.saved, totalSaved) + ")",
+            })))
+            : h("div", { className: "sp-empty" }, all ? t("spine.allEmpty") : t("spine.empty")),
         bars.length
           ? h("div", { className: "sp-legend" }, bars.map((seg) => h("span", { key: "lg-" + seg.row.kind },
             h("span", { className: "sp-dot", style: { background: seg.color } }),
@@ -763,6 +1477,10 @@ window.__ModuleLoader__.load({
             h("span", null, t("spine.failed") + " " + String(num(attempts.failed))))
           : null);
       // 全部会话没有逐刀记录，这里只画本会话的时间线；切到全部会话时先不显示，免得看错。
+      // 默认只列最近 TL_PREVIEW 刀，其余一键展开；展开后限高滚动，不把面板撑长。
+      const newestFirst = sessionCuts.map((cut, index) => ({ cut, index: index + 1 })).reverse();
+      const hiddenCuts = Math.max(0, newestFirst.length - TL_PREVIEW);
+      const shownCuts = timelineAll ? newestFirst : newestFirst.slice(0, TL_PREVIEW);
       const timelineCard = !all && sessionCuts.length
         ? h("div", { className: "sp-card" },
           h("div", { className: "sp-card-title" }, t("spine.timeline"),
@@ -774,129 +1492,378 @@ window.__ModuleLoader__.load({
             h("span", { className: "sp-num" }, t("spine.colTokens")),
             h("span", null, t("spine.colModel")),
             h("span", { className: "sp-num" }, t("spine.colTime")),
-            h("span", { className: "sp-num" }, t("spine.colFiles"))),
-          sessionCuts.map((cut, index) => ({ cut, index: index + 1 }))
-            .reverse()
-            .slice(0, 60)
-            .map((row) => h(CutRow, { key: row.cut.id + "-" + row.index, cut: row.cut, index: row.index, t, dir: state.shadowDir })))
+            h("span", { className: "sp-num" }, t("spine.colFiles")),
+            h("span", null, "")),
+          h("div", { className: "sp-scroll" + (timelineAll ? " sp-scroll-tall" : "") },
+            shownCuts.map((row) => h(CutRow, { key: row.cut.id + "-" + row.index, cut: row.cut, index: row.index, t, dir: state.shadowDir }))),
+          hiddenCuts
+            ? h("div", { className: "sp-tl-more" },
+              h("button", {
+                className: "sp-btn",
+                onClick: () => ui?.toggleTimeline?.(),
+              }, timelineAll
+                ? t("spine.onlyRecent") + " " + TL_PREVIEW + " " + t("spine.cutsUnit")
+                : t("spine.expandRest") + " " + hiddenCuts + " " + t("spine.cutsUnit")))
+            : null)
         : null;
+      // 草稿 > 桥给的生效值 > 投影里的生效值。草稿在第一层，改一格就能立刻看见。
+      const currentOf = (name) => {
+        if (cfg) {
+          const own = cfg.draft[name];
+          if (own !== undefined && own !== null) return String(own);
+          const effective = Number(cfg.effective[name]);
+          if (cfg.effective[name] !== undefined && Number.isFinite(effective)) return String(effective);
+        }
+        const field = model && typeof model.field === "function"
+          ? (() => { try { return model.field(name) || {}; } catch { return {}; } })()
+          : {};
+        const staged = field && field.text !== undefined && field.text !== null ? String(field.text) : "";
+        if (staged !== "") return staged;
+        const resolved = Number(settings[name]);
+        return Number.isFinite(resolved) ? String(resolved) : "";
+      };
+      // 桥通了就能拖；桥没连上（404/断线）时明确停手，别让人对着死控件点。
+      // 桥还没答话（idle/loading）时按宿主 configForms 的判断走，兼容老宿主。
+      const shellWritable = Boolean(shell) && shell.writable !== false;
+      // 桥连上了就一定可写（写的是文件）；否则听宿主表单的，不为「桥没装」锁死控件。
+      const writable = cfg && cfg.status === "ready" ? true : shellWritable;
+      const saving = Boolean((cfg && cfg.saving) || (shell && shell.saving));
+      // 只有桥真的连上了（ready）才接管；连不上就退回宿主设置表单，
+      // 并保留滑块可用——不能因为宿主还没重启就把整片控件锁死。
+      const bridged = Boolean(store && cfg && cfg.status === "ready");
       const knob = (name) => {
         const label = LABELS[name] || [name, ""];
         const field = model && typeof model.field === "function"
           ? (() => { try { return model.field(name) || {}; } catch { return {}; } })()
           : {};
-        // 表单里的值优先（改到一半的草稿也看得见）；没服务配置时退回投影里的生效值。
-        const staged = field && field.value !== undefined && field.value !== null ? String(field.value) : "";
-        const resolved = Number(settings[name]);
-        const value = staged !== "" ? staged : (Number.isFinite(resolved) ? resolved : "");
+        const fixed = Boolean(cfg && cfg.fixed && Object.prototype.hasOwnProperty.call(cfg.fixed, name));
         return h(KnobInput, {
           key: name,
           t,
+          name,
           label: label[0],
           hint: label[1],
-          disabled: !shell.writable || shell.saving,
-          overridden: Boolean(field.overridden),
-          value,
-          onEdit: (text) => { actions.edit?.(name, text); bump(); },
-          onReset: () => { actions.resetField?.(name); bump(); },
+          range: knobRange(t, name),
+          meta: KNOB_META[name],
+          disabled: !writable || saving,
+          overridden: (Boolean(cfg && store && store.dirty(name))) || Boolean(field.overridden),
+          fixed,
+          value: currentOf(name),
+          onEdit: (text) => {
+            if (bridged) store.edit(name, text);
+            else actions.edit?.(name, text);
+            bump();
+          },
+          onReset: () => {
+            if (bridged) store.reset(name);
+            else actions.resetField?.(name);
+            bump();
+          },
+          onToggle: (checked) => {
+            const meta = KNOB_META[name] || {};
+            const next = checked ? String(meta.onValue ?? meta.min) : "0";
+            if (bridged) store.edit(name, next);
+            else actions.edit?.(name, next);
+            bump();
+          },
         });
       };
-      const knobDefaults = (state && state.defaults) || {};
-      const presetDefault = () => {
-        for (const group of KNOB_GROUPS) {
-          for (const name of group.keys) {
-            const value = Number(knobDefaults[name]);
-            if (Number.isFinite(value)) actions.edit?.(name, String(value));
-          }
-        }
+      const valuesOfPreset = (preset) => preset.values || null;
+      const matchesPreset = (preset) => {
+        const values = valuesOfPreset(preset);
+        if (!values) return false;
+        return Object.keys(values).every((name) => {
+          const want = Number(values[name]);
+          const now = Number(currentOf(name));
+          return Number.isFinite(want) && Number.isFinite(now) && Math.abs(now - want) < 1e-9;
+        });
+      };
+      const applyPreset = (preset) => {
+        const values = valuesOfPreset(preset) || {};
+        if (bridged) store.setMany(values);
+        else for (const key of Object.keys(values)) actions.edit?.(key, String(values[key]));
         bump();
       };
       const presetCustom = () => {
         // 「自定义」不写任何东西：草稿里现在填的就是自定义档，点它只是回到未保存状态。
-        actions.discard?.();
+        if (bridged) store.discard();
+        else actions.discard?.();
         bump();
       };
-      const isDefault = KNOB_GROUPS.every((group) => group.keys.every((name) => {
-        const want = Number(knobDefaults[name]);
-        return !Number.isFinite(want) || Math.abs(num(settings[name]) - want) < 1e-9;
-      }));
+      // 只按现在这套值去对预设：对上哪档就高亮哪档，对不上就是自定义。
+      const activePreset = (PRESETS.find((preset) => matchesPreset(preset)) || {}).id || "custom";
+      const activeLabel = t(((PRESETS.find((preset) => preset.id === activePreset) || {}).label) || "spine.presetCustom");
+      // 通道状态一直在：连不上就说连不上，存了给时间，失败了给原因。
+      const draftCount = cfg ? Object.keys(cfg.draft).length : 0;
+      const channelText = (() => {
+        if (!cfg) return t("spine.cfgDown") + t("spine.channelFile");
+        if (cfg.status === "unavailable") {
+          const where = shell && shell.failed ? t("spine.saveFailed") + t("spine.hostRefused") : t("spine.cfgFallback");
+          return t("spine.cfgDown") + (cfg.error || t("spine.channelDown")) + " · " + where;
+        }
+        if (cfg.status === "idle" || cfg.status === "loading") return t("spine.cfgLoading");
+        if (cfg.saveError) return t("spine.saveFailed") + cfg.saveError;
+        if (cfg.saving) return t("saving");
+        if (cfg.savedAt) return t("spine.savedAt") + " " + fmtClock(cfg.savedAt);
+        if (draftCount) return t("spine.draftPending") + " (" + draftCount + ")";
+        return t("spine.cfgReady");
+      })();
+      const channelLine = h("div", {
+        className: "sp-channel" + (cfg && cfg.status === "unavailable" ? " sp-channel-bad" : "") + (cfg && cfg.saveError ? " sp-channel-bad" : ""),
+        title: cfg && cfg.file ? cfg.file : "",
+      },
+        h("span", { className: "sp-channel-label" }, t("spine.cfgChannel")),
+        h("span", { className: "sp-channel-text" }, channelText));
+      // 自定义档：本会话 / 本工作区 / 全部会话。桥会把这条会话能看到的档一起答回来。
+      const presetsInfo = (cfg && cfg.presets) || null;
+      const presetRows = [];
+      if (presetsInfo && presetsInfo.scopes) {
+        for (const key of ["session", "workspace", "all"]) {
+          const bucket = presetsInfo.scopes[key] || { active: "", items: [] };
+          for (const item of bucket.items || []) {
+            presetRows.push({ scope: key, item, active: bucket.active === item.id });
+          }
+        }
+      }
+      const layer = (presetsInfo && presetsInfo.layer) || null;
+      const workspaceKnown = Boolean(presetsInfo && presetsInfo.workspaceKnown);
+      const scopeTag = (key) => t(key === "session" ? "spine.presetTagSession" : key === "workspace" ? "spine.presetTagWorkspace" : "spine.presetTagAll");
+      const scopeName = (key) => t(key === "session" ? "spine.presetScopeSession" : key === "workspace" ? "spine.presetScopeWorkspace" : "spine.presetScopeAll");
+      const scopeHint = (key) => t(key === "session" ? "spine.presetScopeSessionHint" : key === "workspace" ? "spine.presetScopeWorkspaceHint" : "spine.presetScopeAllHint");
+      const presetUi = (ui && ui.preset) || {};
+      const presetReady = Boolean(store && cfg && cfg.status === "ready");
+      const presetBusy = Boolean((cfg && cfg.presetSaving) || saving);
+      const submitPreset = () => {
+        if (!store) return;
+        const name = String(presetUi.name || "").trim();
+        if (!name) return;
+        void store.savePreset(presetUi.scope || "session", name).then((ok) => { if (ok) presetUi.close?.(); });
+      };
+      // 真生效的档写在标题后缀上：别人看面板一眼就知道现在吃的是哪档。
+      const cutPointSub = layer ? scopeTag(layer.scope) + "「" + layer.name + "」" : activeLabel;
+      const presetRow = h("div", { className: "sp-preset sp-preset-row" },
+        PRESETS.map((preset) => h("button", {
+          key: preset.id,
+          className: "sp-btn" + (activePreset === preset.id && !layer ? " sp-btn-primary" : ""),
+          title: t(preset.hint),
+          disabled: !writable || saving,
+          onClick: () => applyPreset(preset),
+        }, t(preset.label))),
+        h("button", {
+          className: "sp-btn" + (activePreset === "custom" && !layer ? " sp-btn-primary" : ""),
+          disabled: !writable || saving,
+          onClick: presetCustom,
+        }, t("spine.presetCustom")),
+        presetsInfo
+          ? h("button", {
+            className: "sp-btn sp-btn-plus",
+            "data-preset-add": "1",
+            title: t("spine.presetAddHint"),
+            disabled: !presetReady || presetBusy,
+            onClick: () => presetUi.open?.(),
+          }, t("spine.presetAdd"))
+          : null);
+      const customRow = presetRows.length
+        ? h("div", { className: "sp-preset sp-preset-row sp-preset-custom" },
+          presetRows.map((row) => h("span", {
+            key: row.scope + ":" + row.item.id,
+            className: "sp-chip" + (row.active ? " sp-chip-on" : "") + (presetUi.confirm === row.item.id ? " sp-chip-ask" : ""),
+            "data-preset-chip": row.scope,
+          },
+            h("button", {
+              className: "sp-chip-btn",
+              title: t("spine.presetChipHint") + " " + row.item.name,
+              disabled: !presetReady || presetBusy,
+              onClick: () => {
+                if (!store) return;
+                // 已经是生效档就再点一下取消，省得去别处找开关。
+                void store.applyPreset(row.scope, row.active ? "" : row.item.id);
+                bump();
+              },
+            },
+              h("span", { className: "sp-chip-name" }, row.item.name),
+              h("span", { className: "sp-chip-tag" }, scopeTag(row.scope))),
+            h("button", {
+              className: "sp-chip-x",
+              "data-preset-del": row.item.id,
+              title: presetUi.confirm === row.item.id ? t("spine.presetDeleteAgain") : t("spine.presetDelete"),
+              disabled: !presetReady || presetBusy,
+              onClick: () => {
+                if (!store) return;
+                if (presetUi.confirm !== row.item.id) { presetUi.setConfirm?.(row.item.id); return; }
+                presetUi.setConfirm?.("");
+                void store.deletePreset(row.scope, row.item.id);
+                bump();
+              },
+            }, "×"))))
+        : null;
+      const presetForm = presetUi.form && presetsInfo
+        ? h("div", { className: "sp-preset-form" },
+          h("div", { className: "sp-form-title" }, t("spine.presetFormTitle")),
+          h("input", {
+            className: "sp-input",
+            "data-preset-name": "1",
+            value: presetUi.name || "",
+            placeholder: t("spine.presetNamePlaceholder"),
+            maxLength: 24,
+            onChange: (event) => presetUi.setName?.(event.target.value),
+          }),
+          h("div", { className: "sp-scope-row" },
+            ["session", "workspace", "all"].map((key) => h("button", {
+              key,
+              "data-preset-scope": key,
+              className: "sp-btn" + ((presetUi.scope || "session") === key ? " sp-btn-primary" : ""),
+              title: scopeHint(key),
+              disabled: key === "workspace" && !workspaceKnown,
+              onClick: () => presetUi.setScope?.(key),
+            }, scopeName(key)))),
+          h("div", { className: "sp-preset-hint" }, workspaceKnown ? "" : t("spine.presetWorkspaceUnknown")),
+          h("div", { className: "sp-preset" },
+            h("button", {
+              className: "sp-btn sp-btn-primary",
+              disabled: !presetReady || presetBusy || !String(presetUi.name || "").trim(),
+              onClick: submitPreset,
+            }, t("spine.presetSave")),
+            h("button", { className: "sp-btn", onClick: () => presetUi.close?.() }, t("spine.presetCancel"))))
+        : null;
+      const activeRow = layer
+        ? h("div", { className: "sp-preset-active" },
+          h("span", null, t("spine.presetLayer") + "：" + scopeName(layer.scope) + "「" + layer.name + "」"),
+          h("button", {
+            className: "sp-btn sp-btn-mini",
+            disabled: !presetReady || presetBusy,
+            onClick: () => { if (store) void store.applyPreset(layer.scope, ""); bump(); },
+          }, t("spine.presetClear")))
+        : null;
       const knobsCard = h("details", { className: "sp-details sp-card" },
         h("summary", { className: "sp-card-title" }, t("spine.cutPoint"),
-          h("span", { className: "sp-card-sub" }, isDefault ? t("spine.presetDefaultOn") : t("spine.knobsHint"))),
+          h("span", { className: "sp-card-sub" }, cutPointSub),
+          h(Chevron)),
+        presetRow,
+        customRow,
+        activeRow,
+        presetForm,
+        cfg && cfg.presetError ? h("div", { className: "sp-channel sp-channel-bad" }, t("spine.presetFailed") + cfg.presetError) : null,
         h("div", { className: "sp-preset" },
-          h("button", {
-            className: "sp-btn" + (isDefault ? " sp-btn-primary" : ""),
-            disabled: !shell.writable || shell.saving,
-            onClick: presetDefault,
-          }, t("spine.presetDefault")),
-          h("button", {
-            className: "sp-btn",
-            disabled: !shell.writable || shell.saving,
-            onClick: presetCustom,
-          }, t("spine.presetCustom")),
-          h("span", { className: "sp-card-sub" }, shell.writable ? t("spine.knobsHint") : t("spine.readOnly")),
+          h("span", { className: "sp-preset-hint" }, layer
+            ? t("spine.presetSaveTarget") + " " + scopeName(layer.scope) + "「" + layer.name + "」"
+            : writable ? t("spine.presetDraftHint") : t("spine.readOnly")),
           h("button", {
             className: "sp-btn sp-btn-primary",
-            disabled: !shell.writable || shell.saving,
-            onClick: () => { actions.save?.(); bump(); },
-          }, shell.saving ? t("saving") : t("save")),
+            disabled: !writable || saving,
+            onClick: () => {
+              if (bridged) { void store.save(); return; }
+              actions.save?.();
+              bump();
+            },
+          }, saving ? t("saving") : t("save")),
           h("button", {
             className: "sp-btn",
-            disabled: !shell.writable || shell.saving,
-            onClick: () => { actions.discard?.(); bump(); },
+            disabled: saving,
+            onClick: () => {
+              if (bridged) { store.discard(); return; }
+              actions.discard?.();
+              bump();
+            },
           }, t("discard"))),
+        channelLine,
         KNOB_GROUPS.map((group) => h("div", { key: group.id, className: "sp-group" },
           h("div", { className: "sp-group-title" },
             t(group.title),
             group.experimental ? h("span", { className: "sp-tag sp-tag-warn" }, t("spine.experimental")) : null),
           group.hint ? h("div", { className: "sp-field-hint", style: { marginBottom: "8px" } }, t(group.hint)) : null,
           group.enable
-            ? h("label", { className: "sp-switch" },
-              h("input", {
-                type: "checkbox",
-                checked: num(settings[group.enable]) > 0,
-                disabled: !shell.writable || shell.saving,
-                onChange: (event) => {
-                  actions.edit?.(group.enable, event.target.checked ? String(group.on) : "0");
-                  bump();
-                },
-              }),
-              h("span", null, t("spine.enableMid")))
+            ? h(MidSwitch, {
+              t,
+              on: Number(currentOf(group.enable)) > 0,
+              disabled: !writable || saving,
+              ask: Boolean(mid && mid.ask),
+              ack: Boolean(mid && mid.ack),
+              onOpen: () => mid?.open?.(),
+              onClose: () => mid?.close?.(),
+              onAck: (value) => mid?.setAck?.(value),
+              // 开关不走草稿：关掉是安全动作，改完立刻写文件，别让「关了但没保存」再骗一次人。
+              onOff: () => {
+                if (bridged) { void store.saveNow({ [group.enable]: 0 }); return; }
+                actions.edit?.(group.enable, "0"); actions.save?.(); bump();
+              },
+              onEnable: () => {
+                if (bridged) { void store.saveNow({ [group.enable]: Number(group.on) }); mid?.close?.(); return; }
+                actions.edit?.(group.enable, String(group.on)); actions.save?.(); mid?.close?.(); bump();
+              },
+            })
             : null,
           h("div", { className: "sp-fields" }, group.keys.map(knob)))));
-      const docsCard = h("div", { className: "sp-card" },
-        h("div", { className: "sp-card-title" }, t("spine.docs"),
-          h("span", { className: "sp-card-sub" }, t("spine.docsHint"))),
-        h("div", null,
-          h(DocRow, { t, label: t("spine.docsReadme"), value: docs.readme }),
-          h(DocRow, { t, label: t("spine.docsChangelog"), value: docs.changelog }),
+      const docsCard = h("details", { className: "sp-details sp-card" },
+        h("summary", { className: "sp-card-title" }, t("spine.docs"),
+          h("span", { className: "sp-card-sub" }, t("spine.docsHint")),
+          h(Chevron)),
+        h("div", { className: "sp-detail" },
+          h(DocRow, {
+            t, label: t("spine.docsReadme"), value: docs.readme, which: "readme",
+            exists: docs.readmeExists !== false, preview: cfg && cfg.doc, loading: Boolean(cfg && cfg.docLoading),
+            onPreview: (which) => { void store?.openDoc?.(which); },
+          }),
+          h(DocRow, {
+            t, label: t("spine.docsChangelog"), value: docs.changelog, which: "changelog",
+            exists: docs.changelogExists !== false, preview: cfg && cfg.doc, loading: Boolean(cfg && cfg.docLoading),
+            onPreview: (which) => { void store?.openDoc?.(which); },
+          }),
           h(DocRow, { t, label: t("spine.docsRepo"), value: docs.repo, href: docs.repo }),
           h(DocRow, { t, label: t("spine.docsIssues"), value: docs.issues, href: docs.issues }),
           h(DocRow, { t, label: t("spine.version"), value: docs.version })));
       const debugCard = h("details", { className: "sp-details sp-card" },
         h("summary", { className: "sp-card-title" }, t("spine.debug"),
-          h("span", { className: "sp-card-sub" }, t("spine.debugHint"))),
+          h("span", { className: "sp-card-sub" }, t("spine.debugHint")),
+          h(Chevron)),
         h("div", { className: "sp-detail" },
           h("div", { className: "sp-detail-row" },
             h("span", { className: "sp-dim" }, t("spine.dirLabel")),
-            h("code", { className: "sp-path" }, state.shadowDir || "—"),
+            h("code", { className: "sp-path", title: state.shadowDir || "" }, shortPath(state.shadowDir || "—")),
             h("button", { className: "sp-btn", onClick: () => copyText(state.shadowDir || "") }, t("spine.copyDir"))),
           h("div", { className: "sp-detail-row" },
             h("span", { className: "sp-dim" }, t("spine.debugSid")),
             h("code", { className: "sp-path" }, state.sid || "—"),
             h("span", null)),
-          h("pre", { className: "sp-path", style: { margin: 0, whiteSpace: "pre-wrap" } },
-            t("spine.debugCounts") + " " + JSON.stringify({ kinds: counterKinds, savedBy })),
-          h("pre", { className: "sp-path", style: { margin: 0, whiteSpace: "pre-wrap" } },
-            t("spine.debugSettings") + " " + JSON.stringify(settings))));
-      return h("div", { className: "sp-root", ref: rootRef },
+          h("div", { className: "sp-detail-row" },
+            h("span", { className: "sp-dim" }, t("spine.settingsFile")),
+            h("code", { className: "sp-path", title: (cfg && cfg.file) || "" }, shortPath((cfg && cfg.file) || "—")),
+            h("button", { className: "sp-btn", onClick: () => copyText((cfg && cfg.file) || "") }, t("spine.copyPath"))),
+          h("div", { className: "sp-detail-row" },
+            h("span", { className: "sp-dim" }, t("spine.cfgChannel")),
+            h("span", { className: "sp-val" }, cfg
+              ? (cfg.status === "unavailable" ? t("spine.channelDown") + " · " + (cfg.error || "") : t("spine.channelFile") + " · " + cfg.status)
+              : t("spine.channelDown")),
+            h("span", null)),
+          // 原始 JSON 糊在面板上没人看得懂：计数按刀法摊开，设置按旋钮名+单位摊开；
+          // 要原文（贴 issue 用）就点「复制 JSON」，别让人对着一行 JSON 猜。
+          h("div", { className: "sp-dbg-head" },
+            h("span", null, t("spine.debugCounts")),
+            h("button", {
+              className: "sp-btn",
+              onClick: () => copyText(JSON.stringify({ kinds: counterKinds, savedBy })),
+            }, t("spine.copyCounts"))),
+          h("div", { className: "sp-dbg-line" }, KNIFE_ORDER.map((kind) =>
+            t(KNIFE_LABEL[kind]) + " " + String(num(counterKinds[kind]))).join(" · ")),
+          h("div", { className: "sp-dbg-head" },
+            h("span", null, t("spine.debugSettings")),
+            h("button", { className: "sp-btn", onClick: () => copyText(JSON.stringify(settings)) }, t("spine.copySettings"))),
+          h("div", { className: "sp-dbg-grid" }, Object.keys(settings).length
+            ? Object.keys(settings).map((name) => {
+              const off = Boolean((KNOB_META[name] || {}).off) && !(Number(settings[name]) > 0);
+              return h("div", { key: name, className: "sp-dbg-row" },
+                h("span", null, ((LABELS[name] || [name])[0])),
+                h("span", null, off ? t("spine.offState") : fmtKnobValue(name, settings[name])));
+            })
+            : h("div", { className: "sp-dim" }, "—"))));
+      return h("div", { className: "sp-root", ref: rootRef, "data-spine-cover": "", "data-conversation-composer-overlay": "" },
         topbar,
         h("div", { className: "sp-grid" }, kpis),
         composition,
         statsCard,
         timelineCard,
-        docsCard,
         knobsCard,
+        docsCard,
         debugCard);
     }
 
@@ -927,13 +1894,54 @@ window.__ModuleLoader__.load({
       const state = readProjection(props);
       const [tick, setTick] = React.useState(0);
       const [scope, setScope] = React.useState("session");
+      // 中刀二次确认：先要说明、再勾「我明白」、最后点确认，三步都在面板里。
+      const [midAsk, setMidAsk] = React.useState(false);
+      const [midAck, setMidAck] = React.useState(false);
+      const [timelineAll, setTimelineAll] = React.useState(false);
+      // 自定义档：新建表单（＋）、名字、范围，以及「再点一次删除」的待确认 id。
+      const [presetForm, setPresetForm] = React.useState(false);
+      const [presetName, setPresetName] = React.useState("");
+      const [presetScope, setPresetScope] = React.useState("session");
+      const [presetConfirm, setPresetConfirm] = React.useState("");
+      // 配置通道：store 只建一次，订阅它拿快照；load 只在挂载时跑一次。
+      const [store] = React.useState(() => createSettingsStore());
+      const cfg = React.useSyncExternalStore(store.subscribe, store.getSnapshot);
+      const panelSid = state && typeof state === "object" && typeof state.sid === "string" ? state.sid : "";
+      React.useEffect(() => {
+        // 纯测试环境没有 document/fetch：不跑网络，保留 idle 状态（界面按宿主模型走）。
+        if (typeof document === "undefined" || typeof fetch !== "function") return;
+        // 带上 sid：describe 才能把「本会话开关」也一起答回来；换会话时重新问一次。
+        void store.load(panelSid);
+      }, [store, panelSid]);
       try {
         if (state && state.projectionError) throw new Error(state.projectionError);
-        return renderPanel(props, state, scope, () => setTick(tick + 1), setScope);
+        return renderPanel(props, state, scope, () => setTick(tick + 1), setScope, {
+          ask: midAsk,
+          ack: midAck,
+          open: () => { setMidAsk(true); setMidAck(false); },
+          close: () => { setMidAsk(false); setMidAck(false); },
+          setAck: (value) => setMidAck(Boolean(value)),
+        }, {
+          timelineAll,
+          toggleTimeline: () => setTimelineAll((value) => !value),
+          cfg,
+          store,
+          preset: {
+            form: presetForm,
+            name: presetName,
+            scope: presetScope,
+            confirm: presetConfirm,
+            open: () => { setPresetName(""); setPresetScope("session"); setPresetConfirm(""); setPresetForm(true); },
+            close: () => { setPresetForm(false); setPresetConfirm(""); },
+            setName: (value) => setPresetName(String(value == null ? "" : value)),
+            setScope: (value) => setPresetScope(String(value || "session")),
+            setConfirm: (value) => setPresetConfirm(String(value == null ? "" : value)),
+          },
+        });
       } catch (error) {
         // 渲染期抛错会把整条槽位条目打成空白：兜底成一条可见提示，别让人看到白屏。
         console.error('spine: panel render failed', error);
-        return h("div", { className: "sp-root", ref: rootRef },
+        return h("div", { className: "sp-root", ref: rootRef, "data-spine-cover": "", "data-conversation-composer-overlay": "" },
           h("div", { className: "sp-card" },
             h("div", { className: "sp-card-title" }, t("spine.knobs")),
             h("div", { className: "sp-empty" }, t("spine.error") + " " + String(error && error.message ? error.message : error))));
@@ -998,6 +2006,8 @@ window.__ModuleLoader__.load({
     return {
       inject: ["slots", "locale", "configForms"],
       apply(ctx) {
+        // 面板要靠宿主打开本机文档：把上下文留给渲染期用（服务取不到也不影响加载）。
+        setBridgeCtx(ctx);
         const t = ctx.locale.bind("liveCompact");
         ctx.effect(() => ctx.locale.register("liveCompact", { zh, en }), "live-compact: settings dictionary");
         const fields = [PRESET_FIELD, ...KEYS.map(settingsNumberField)];
@@ -1009,7 +2019,19 @@ window.__ModuleLoader__.load({
           for (const form of forms.values()) { try { form?.dispose?.(); } catch {} }
         }, "live-compact: form subscriptions");
         let activeId = NS;
-        const activeModel = () => forms.get(activeId) || forms.get(NS) || null;
+        // 面板注册得比配置服务早：apply 时 get() 可能还拿不到模型。真拿到之前返回 null，
+        // 之后每次问都再试一次，避免整场会话都停在「没有模型」的状态。
+        const formFor = (id) => {
+          if (!id) return null;
+          const cached = forms.get(id);
+          if (cached) return cached;
+          try {
+            const built = new SettingsFormModel(ctx.configForms.get(id), fields);
+            forms.set(id, built);
+            return built;
+          } catch { return null; }
+        };
+        const activeModel = () => formFor(activeId) || formFor(NS);
         // 每个模型的快照订阅只建一次：whileServed 反复进出不能漏订阅。
         const stores = new Map();
         const storeFor = (form) => {
@@ -1106,7 +2128,9 @@ window.__ModuleLoader__.load({
       __test: {
         summarizeCuts, barSegments, kindBars, kindOfCut, shareText, readProjection,
         fmtTokens, fmtClock, renderPanel, SpinePanel, SPINE_CSS,
-        KNIFE_COLOR, KNOB_GROUPS, MID_ON,
+        KNIFE_COLOR, KNOB_GROUPS, MID_ON, PRESETS, KNOB_META, knobRange, fmtKnobValue, MidSwitch,
+        shortPath, DocRow, openHostPath, setBridgeCtx, createSettingsStore, postBridge,
+        cutBars, CutRow, Chevron,
       },
     };
   },

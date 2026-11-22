@@ -9,13 +9,16 @@
 import { loadBase, loadCompaction, loadSchema, STOCK_ENGINE } from "./adapter.js";
 import { configSchema, engineConfig } from "./settings.js";
 import { installPresetGate } from "./gate.js";
+import { installSettingsBridge } from "./bridge.js";
 import { installPruneHook } from "./v2/prune-hook.js";
 import { spineProjectionDefinition } from "./projection.js";
 import { readGlobalStats } from "./stats.js";
 import { DEFAULTS, readSettings } from "./settings.js";
+import { presetLayerFor } from "./presets.js";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
+import { docsFor } from "./docs.js";
 import { shadowDirectory } from "./shadow.js";
 import { sessionDir } from "./shadow.js";
 import { defaultV2, v2Enabled } from "./v2/store-switch.js";
@@ -152,6 +155,7 @@ function ownVersion(dir) {
   try { return String(JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).version || ""); } catch { return ""; }
 }
 
+
 // 服务可选（老宿主没有 sessionProjections），注册失败只影响面板，绝不影响压缩。
 let zod = null;
 try { zod = (await import("zod")).z; } catch {}
@@ -166,19 +170,13 @@ function installCutsProjection(ctx) {
       shadowDir: (sid) => {
         try { return sessionDir(shadowDirectory(), sid || "__default__"); } catch { return ""; }
       },
-      // 面板上的旋钮值：配置 > 文件 > 环境 > 默认，和引擎实际用的同一套解析。
-      settingsReader: () => readSettings(latestConfig || {}),
+      // 面板上的旋钮值：配置 > 自定义档（会话/工作区/全部）> 文件 > 环境 > 默认，和引擎同一套解析。
+      settingsReader: (sid) => readSettings(latestConfig || {}, process.env, presetLayerFor(sid || "")),
       // 「全部会话」：直接汇总 shadow 根目录的决策日志，按 mtime 判重，1.5 秒缓存。
       globalStatsReader: () => readGlobalStats({ dir: shadowDirectory() }),
       // 「默认档」按钮填的就是这份引擎默认值。
       defaults: DEFAULTS,
-      docs: {
-        readme: here ? join(here, "README.md") : "",
-        changelog: here ? join(here, "CHANGELOG.md") : "",
-        repo: REPO_URL,
-        issues: ISSUES_URL,
-        version: ownVersion(here),
-      },
+      docs: docsFor(here, { repo: REPO_URL, issues: ISSUES_URL, version: ownVersion(here) }),
     });
     let handle = null;
     let disposed = false;
@@ -194,6 +192,19 @@ function installCutsProjection(ctx) {
     }, "spine: cuts projection");
   } catch (error) {
     ctx?.logger?.debug?.(`spine: cuts projection unavailable: ${reasonText(error)}`);
+  }
+}
+
+/** 面板设置桥：可选服务（纯 CLI 宿主没有 webServer），挂了也只影响面板，不影响压缩。 */
+function installPanelBridge(ctx) {
+  try {
+    const here = pluginDir();
+    installSettingsBridge(ctx, {
+      getConfig: () => latestConfig || {},
+      docs: docsFor(here, { repo: REPO_URL, issues: ISSUES_URL, version: ownVersion(here) }),
+    });
+  } catch (error) {
+    ctx?.logger?.debug?.("spine: settings bridge skipped: " + String(error?.message ?? error));
   }
 }
 
@@ -232,6 +243,7 @@ export default class LiveCompactEntry {
   constructor(ctx, config) {
     try { latestConfig = config || {}; } catch {}
     installCutsProjection(ctx);
+    installPanelBridge(ctx);
     installPresetGate(ctx, config);
     // V2：在被官方修剪器改写之前，把那一小撮原文压一份兜底副本。
     if (v2Enabled()) {

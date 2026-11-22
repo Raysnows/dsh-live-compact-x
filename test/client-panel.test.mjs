@@ -19,13 +19,22 @@ const React = {
     hooks.push(slot);
     return [slot.value, (next) => { slot.value = typeof next === "function" ? next(slot.value) : next; slot.sets += 1; }];
   },
+  useRef(initial) { return { current: initial }; },
+  useEffect(fn) { try { fn(); } catch {} },
+  useSyncExternalStore(subscribe, getSnapshot) { void subscribe; return getSnapshot(); },
 };
 
 class SettingsFormModel {
-  constructor(ledger, fields) { this.ledger = ledger; this.fields = fields; this.saved = 0; this.discarded = 0; this.edits = []; }
+  constructor(ledger, fields) { this.ledger = ledger; this.fields = fields; this.saved = 0; this.discarded = 0; this.edits = []; this.overrides = {}; }
   bind(selector) { return () => selector(); }
   shell() { return { writable: true, saving: false }; }
-  field(name) { return { value: "", overridden: false }; }
+  // 宿主真实的 field() 契约：{ text, overridden, invalid }（没有 value 字段）。
+  // 这里同时给 value，是为了让旧断言还能读到字符串。
+  field(name) {
+    const value = this.overrides[name];
+    const text = value === undefined ? "" : String(value);
+    return { text, value: text, overridden: value !== undefined, invalid: false };
+  }
   actions() {
     return {
       edit: (name, text) => { this.edits.push([name, text]); },
@@ -188,8 +197,52 @@ ok(Boolean(saveBtn), "有保存按钮");
 ok(debug !== null, "调试信息是一个 details");
 ok(debug && !("open" in debug.props), "调试台默认不展开");
 ok(badges.size === 5, "时间线上五种刀法徽标颜色不同（" + badges.size + "）");
+let chevs = 0;
+walk(tree, (entry) => {
+  const n = entry.node;
+  const cls = n && typeof n.props?.className === "string" ? n.props.className.split(" ") : [];
+  if (cls.includes("sp-chev")) chevs += 1;
+});
+ok(chevs === 9, "可展开的地方都挂 ▸ 图标（3 张卡 + 6 行时间线）：" + chevs);
+ok(T.SPINE_CSS.includes(".sp-details[open]>summary .sp-chev{transform:rotate(90deg)}"), "展开后图标转 90°");
 saveBtn?.props?.onClick?.();
-ok(model.saved === 1, "点保存真的调了 save()");
+ok(model.saved === 1, "没接配置桥时，保存仍然回落到宿主模型");
+
+// 接上配置桥之后：保存必须真的把草稿交给桥，而不是调宿主的 save()。
+let bridgeSaved = 0;
+const bridgeStore = {
+  save: () => { bridgeSaved += 1; return Promise.resolve(true); },
+  discard() {}, edit() {}, reset() {}, setMany() {}, openDoc() {}, dirty: () => true,
+};
+const bridgeCfg = {
+  status: "ready", draft: { minNetGain: "5000" }, effective: { minNetGain: 5000 },
+  defaults: {}, fixed: {}, file: "C:/u/.dsh/spine-settings.json",
+  saving: false, savedAt: 0, saveError: "", doc: null, docLoading: false,
+};
+const wiredTree = T.renderPanel({ t: (key) => key, model, actions }, fakeState, "session", () => {}, () => {}, undefined,
+  { timelineAll: false, toggleTimeline() {}, cfg: bridgeCfg, store: bridgeStore });
+let wiredSave = null;
+let wiredKnob = null;
+walk(wiredTree, (entry) => {
+  if (entry.node?.props?.className === "sp-btn sp-btn-primary") wiredSave = entry.node;
+  if (entry.node?.props?.["data-knob"] === "minNetGain" && entry.node?.props?.type === "range") wiredKnob = entry.node;
+});
+wiredSave?.props?.onClick?.();
+ok(bridgeSaved === 1 && model.saved === 1, "接上桥后保存走桥，不再重复调宿主 save()");
+ok(texts(wiredTree).includes("spine.cfgChannel"), "旋钮卡里有通道状态行");
+ok(texts(wiredTree).includes("spine.draftPending"), "草稿没保存时如实标出来");
+ok(wiredKnob && wiredKnob.props.value === "5000", "草稿值直接反映在滑块上（不再等宿主回写）");
+
+const downCfg = { ...bridgeCfg, status: "unavailable", error: "HTTP 404" };
+const downTree = T.renderPanel({ t: (key) => key, model, actions }, fakeState, "session", () => {}, () => {}, undefined,
+  { timelineAll: false, toggleTimeline() {}, cfg: downCfg, store: bridgeStore });
+let downKnob = null;
+walk(downTree, (entry) => {
+  if (entry.node?.props?.["data-knob"] === "minNetGain" && entry.node?.props?.type === "range") downKnob = entry.node;
+});
+ok(Boolean(downKnob) && downKnob.props.disabled !== true, "桥没连上时滑块仍可用（退回宿主表单）");
+ok(texts(downTree).includes("HTTP 404"), "把桥失败的原因写出来");
+ok(texts(downTree).includes("spine.cfgFallback"), "说明现在走的是宿主设置表单");
 
 // 刀把必须是最后一张卡（中刀是实验性功能，放最后）
 const sections = [];
@@ -210,7 +263,8 @@ walk(tree, (entry) => {
   }
 });
 const uniqueSections = sections.filter((s, i) => sections.indexOf(s) === i);
-ok(uniqueSections[uniqueSections.length - 2] === "spine.cutPoint", "刀把（切点）在文档卡之后：" + uniqueSections.join("|"));
+ok(uniqueSections[uniqueSections.length - 3] === "spine.cutPoint", "切点排在文档之前：" + uniqueSections.join("|"));
+ok(uniqueSections[uniqueSections.length - 2] === "spine.docs", "文档与出处排在切点之后：" + uniqueSections.join("|"));
 ok(uniqueSections[uniqueSections.length - 1] === "spine.debug", "调试台在最后且收起：" + uniqueSections.join("|"));
 ok(uniqueSections.filter((sec) => sec === "spine.cutPoint").length === 1, "切点卡只出现一次");
 const knobOrder = T.KNOB_GROUPS.map((g) => g.id).join(",");
@@ -218,28 +272,73 @@ ok(knobOrder === "small,big,mid", "中刀排到最后（" + knobOrder + "）");
 ok(T.KNOB_GROUPS.find((g) => g.id === "mid").experimental === true, "中刀标了实验性");
 ok(T.KNOB_GROUPS.find((g) => g.id === "mid").enable === "deepCutAbove", "中刀有独立开关（deepCutAbove）");
 
-console.log("8. 实验性开关");
-const model2 = new SettingsFormModel({}, []);
-hooks.length = 0;
-const tree2 = T.SpinePanel({ t: (key) => key, useProjection: () => fakeState, model: model2, actions: model2.actions() });
-let toggle = null;
-walk(tree2, (entry) => {
-  const n = entry.node;
-  if (!n) return;
-  if (n.type === "input" && n.props?.type === "checkbox") toggle = n;
-});
-ok(Boolean(toggle), "有中刀开关");
-ok(toggle.props.checked === true, "deepCutAbove=120000 时开关是开的");
-toggle.props.onChange({ target: { checked: false } });
-ok(model2.edits.some(([name, text]) => name === "deepCutAbove" && text === "0"), "关掉开关写 deepCutAbove=0");
-const offState = { ...fakeState, settings: { ...fakeState.settings, deepCutAbove: 0 } };
-hooks.length = 0;
-const tree3 = T.SpinePanel({ t: (key) => key, useProjection: () => offState, model: model2, actions: model2.actions() });
-let toggle3 = null;
-walk(tree3, (entry) => { const n = entry.node; if (n && n.type === "input" && n.props?.type === "checkbox") toggle3 = n; });
-ok(toggle3.props.checked === false, "deepCutAbove=0 时开关是关的");
-toggle3.props.onChange({ target: { checked: true } });
-ok(model2.edits.some(([name, text]) => name === "deepCutAbove" && text === String(T.MID_ON)), "打开开关写回默认门槛 " + T.MID_ON);
+console.log("8. 实验性开关：开要二次确认，关是一键");
+const midOff = { ...fakeState, settings: { ...fakeState.settings, deepCutAbove: 0 } };
+const checkboxes = (tree) => {
+  const found = [];
+  // 只认面板自己的开关：旋钮那排「启用」勾带 data-knob，属于配置项，不是这里要找的开关。
+  walk(tree, (entry) => {
+    const n = entry.node;
+    if (n && n.type === "input" && n.props?.type === "checkbox" && !n.props["data-knob"]) found.push(n);
+  });
+  return found;
+};
+const buttonsOf = (tree, label) => {
+  const found = [];
+  walk(tree, (entry) => {
+    const n = entry.node;
+    if (!n || n.type !== "button") return;
+    const text = [];
+    walk(n, (x) => { if (x.kind === "text") text.push(x.value); });
+    if (text.join("") === label) found.push(n);
+  });
+  return found;
+};
+{
+  // 关着的时候点开关：只弹确认，不写配置
+  const modelA = new SettingsFormModel({}, []);
+  const callsA = { open: 0, close: 0 };
+  const treeA = T.renderPanel({ t: (key) => key, model: modelA, actions: modelA.actions() }, midOff, "session", () => {}, () => {},
+    { ask: false, ack: false, open: () => { callsA.open += 1; }, close: () => { callsA.close += 1; }, setAck: () => {} });
+  const swA = checkboxes(treeA)[0];
+  ok(Boolean(swA), "有中刀开关");
+  ok(swA.props.checked === false, "deepCutAbove=0 时开关是关的");
+  swA.props.onChange({ target: { checked: true } });
+  ok(callsA.open === 1 && modelA.edits.length === 0, "打开只弹确认，不直接改 deepCutAbove");
+  ok(buttonsOf(treeA, "spine.midConfirm").length === 0, "没弹确认时没有确认按钮");
+  // 弹了确认框：没勾「我明白」，确认按钮禁用
+  const modelB = new SettingsFormModel({}, []);
+  const treeB = T.renderPanel({ t: (key) => key, model: modelB, actions: modelB.actions() }, midOff, "session", () => {}, () => {},
+    { ask: true, ack: false, open: () => {}, close: () => {}, setAck: () => {} });
+  const confirmB = buttonsOf(treeB, "spine.midConfirm")[0];
+  ok(Boolean(confirmB), "确认框给出确认开启");
+  ok(confirmB.props.disabled === true, "没勾「我明白」时确认按钮禁用");
+  ok(texts(treeB).includes("spine.midWarnBody"), "确认框里有风险说明");
+  // 勾了以后点确认：才真的写 deepCutAbove 并收起确认框
+  const modelC = new SettingsFormModel({}, []);
+  let closedC = 0;
+  const treeC = T.renderPanel({ t: (key) => key, model: modelC, actions: modelC.actions() }, midOff, "session", () => {}, () => {},
+    { ask: true, ack: true, open: () => {}, close: () => { closedC += 1; }, setAck: () => {} });
+  const confirmC = buttonsOf(treeC, "spine.midConfirm")[0];
+  ok(confirmC.props.disabled !== true, "勾了「我明白」才能确认");
+  confirmC.props.onClick();
+  ok(modelC.edits.some(([name, text]) => name === "deepCutAbove" && text === String(T.MID_ON)), "确认后才写 deepCutAbove=" + T.MID_ON);
+  ok(closedC === 1, "写完把确认框收起来");
+  const ackTree = T.renderPanel({ t: (key) => key, model: modelC, actions: modelC.actions() }, midOff, "session", () => {}, () => {},
+    { ask: true, ack: false, open: () => {}, close: () => {}, setAck: () => {} });
+  const ackBox = checkboxes(ackTree)[1];
+  ok(Boolean(ackBox), "确认框里有「我明白」勾选");
+  // 关掉是一键的
+  const onState = { ...fakeState, settings: { ...fakeState.settings, deepCutAbove: 120000 } };
+  const modelD = new SettingsFormModel({}, []);
+  const treeD = T.renderPanel({ t: (key) => key, model: modelD, actions: modelD.actions() }, onState, "session", () => {}, () => {},
+    { ask: false, ack: false, open: () => {}, close: () => {}, setAck: () => {} });
+  const swD = checkboxes(treeD)[0];
+  ok(swD.props.checked === true, "deepCutAbove=120000 时开关是开的");
+  swD.props.onChange({ target: { checked: false } });
+  ok(modelD.edits.some(([name, text]) => name === "deepCutAbove" && text === "0"), "关掉开关直接写 deepCutAbove=0");
+  ok(modelD.saved === 1, "关掉开关立刻保存，不用再点一次保存（saved=" + modelD.saved + "）");
+}
 
 console.log("9. 全部会话视图");
 const setScope = (next) => { hooks.length = 0; };
@@ -263,7 +362,7 @@ const sessionTree = T.renderPanel({ t: (key) => key, model, actions }, fakeState
 ok(!texts(sessionTree).includes("spine.sessionsHint"), "本会话视图不显示跨会话 KPI");
 ok(texts(sessionTree).includes("80.0k"), "本会话视图显示中刀 80.0k");
 
-console.log("9b. 切点卡：默认收起、有默认档/自定义档");
+console.log("9b. 切点卡：预设档 + 参考范围");
 {
   let cutCard = null;
   walk(tree, (entry) => {
@@ -277,36 +376,58 @@ console.log("9b. 切点卡：默认收起、有默认档/自定义档");
   });
   ok(Boolean(cutCard), "没有 open 属性的 details：默认收起");
   ok(cutCard && !("open" in cutCard.props), "切点卡默认不展开");
-  const buttons = [];
-  if (cutCard) walk(cutCard, (entry) => {
-    const n = entry.node;
-    if (n && n.type === "button") {
-      const label = [];
-      walk(n, (x) => { if (x.kind === "text") label.push(x.value); });
-      buttons.push({ label: label.join(""), node: n });
-    }
-  });
-  const defBtn = buttons.find((b) => b.label === "spine.presetDefault");
-  const cusBtn = buttons.find((b) => b.label === "spine.presetCustom");
-  ok(Boolean(defBtn && cusBtn), "有默认档和自定义档两个按钮");
-  // 默认档：把 deepseek 的默认值写进每个旋钮
-  const model3 = new SettingsFormModel({}, []);
+  const inside = (root, label) => {
+    const found = [];
+    walk(root, (entry) => {
+      const n = entry.node;
+      if (!n || n.type !== "button") return;
+      const text = [];
+      walk(n, (x) => { if (x.kind === "text") text.push(x.value); });
+      if (text.join("") === label) found.push(n);
+    });
+    return found;
+  };
+  const presetLabels = cutCard ? ["spine.presetRecommended", "spine.presetSmallFirst", "spine.presetBigFirst", "spine.presetCustom"] : [];
+  ok(presetLabels.filter((label) => inside(cutCard, label).length === 1).length === 4, "四个档位按钮各一个（推荐/小刀优先/大刀优先/自定义）");
+  ok(inside(cutCard, "spine.presetDefault").length === 0, "出厂档按钮删掉了（它只会把人一键关光）");
   const stateWithDefaults = { ...fakeState, defaults: { chunkMax: 32000, chunkMin: 1000, burstCuts: 3, paybackTurns: 0, spanBandRatio: 0, minNetGain: 3000, deepCutAbove: 0, mergeMaxSpan: 4, mergeBreakEven: 2, mergeCooldownMs: 300000, officialAbove: 0, officialCooldownMs: 1200000, bigGate: 650000, keepRounds: 3, keepRoundTokens: 32000 } };
+  // 推荐档：日常能跑的一套；11 项，不碰中刀
+  const modelRec = new SettingsFormModel({}, []);
   hooks.length = 0;
-  const tree4 = T.renderPanel({ t: (key) => key, model: model3, actions: model3.actions() }, stateWithDefaults, "session", () => {}, () => {});
-  let def = null;
-  walk(tree4, (entry) => {
-    const n = entry.node;
-    if (n && n.type === "button") {
-      const label = [];
-      walk(n, (x) => { if (x.kind === "text") label.push(x.value); });
-      if (label.join("") === "spine.presetDefault") def = n;
-    }
-  });
-  def?.props?.onClick?.();
-  ok(model3.edits.some(([name, text]) => name === "chunkMax" && text === "32000"), "默认档把 chunkMax 写回 32000");
-  ok(model3.edits.some(([name, text]) => name === "deepCutAbove" && text === "0"), "默认档关掉中刀");
-  ok(model3.edits.length === 15, "默认档写满 15 个旋钮（" + model3.edits.length + "）");
+  const treeRec = T.renderPanel({ t: (key) => key, model: modelRec, actions: modelRec.actions() }, stateWithDefaults, "session", () => {}, () => {});
+  inside(treeRec, "spine.presetRecommended")[0]?.props?.onClick?.();
+  const recNames = modelRec.edits.map(([name]) => name);
+  ok(modelRec.edits.length === 11, "推荐档填 11 项（" + modelRec.edits.length + "）");
+  ok(modelRec.edits.some(([name, text]) => name === "officialAbove" && text === "450000"), "推荐档 45 万请官方收");
+  ok(modelRec.edits.some(([name, text]) => name === "paybackTurns" && text === "8"), "推荐档回本 8 轮");
+  ok(modelRec.edits.some(([name, text]) => name === "spanBandRatio" && text === "0.06"), "推荐档刀长按 6%");
+  ok(!recNames.some((name) => name === "deepCutAbove" || name.startsWith("merge")), "推荐档不碰中刀");
+  // 小刀优先：只动刀法策略，中刀的旋钮一个都不碰
+  const model4 = new SettingsFormModel({}, []);
+  hooks.length = 0;
+  const tree5 = T.renderPanel({ t: (key) => key, model: model4, actions: model4.actions() }, stateWithDefaults, "session", () => {}, () => {});
+  inside(tree5, "spine.presetSmallFirst")[0]?.props?.onClick?.();
+  const names = model4.edits.map(([name]) => name);
+  ok(model4.edits.length === 11, "小刀优先填 11 项（" + model4.edits.length + "）");
+  ok(model4.edits.some(([name, text]) => name === "officialAbove" && text === "600000"), "小刀优先把大刀推迟到 60 万");
+  ok(model4.edits.some(([name, text]) => name === "spanBandRatio" && text === "0"), "小刀优先不按上下文缩刀长（用满 chunkMax）");
+  ok(model4.edits.some(([name, text]) => name === "burstCuts" && text === "4"), "小刀优许多切一刀");
+  ok(!names.some((name) => name === "deepCutAbove" || name.startsWith("merge")), "预设不碰中刀的旋钮（" + names.join(",") + "）");
+  // 大刀优先：20 万就让官方收
+  const model5 = new SettingsFormModel({}, []);
+  hooks.length = 0;
+  const tree6 = T.renderPanel({ t: (key) => key, model: model5, actions: model5.actions() }, stateWithDefaults, "session", () => {}, () => {});
+  inside(tree6, "spine.presetBigFirst")[0]?.props?.onClick?.();
+  ok(model5.edits.some(([name, text]) => name === "officialAbove" && text === "200000"), "大刀优先在 20 万就交给官方");
+  ok(model5.edits.some(([name, text]) => name === "burstCuts" && text === "1"), "大刀优先一轮只切一刀");
+  // 当前档要高亮：全 0（出厂值）对不上推荐/小刀/大刀，就落回自定义
+  hooks.length = 0;
+  const tree7 = T.renderPanel({ t: (key) => key, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() }, { ...stateWithDefaults, settings: { ...stateWithDefaults.settings, deepCutAbove: 0, paybackTurns: 0, spanBandRatio: 0, minNetGain: 3000, officialAbove: 0, burstCuts: 3 } }, "session", () => {}, () => {});
+  ok(String(inside(tree7, "spine.presetCustom")[0]?.props?.className).includes("sp-btn-primary"), "对不上任何档时高亮自定义");
+  // 保存过推荐值之后，打开面板高亮的就是推荐档
+  hooks.length = 0;
+  const treeRec2 = T.renderPanel({ t: (key) => key, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() }, { ...stateWithDefaults, settings: { ...stateWithDefaults.settings, officialAbove: 450000, paybackTurns: 8, spanBandRatio: 0.06, burstCuts: 3, minNetGain: 3000, minTokens: 20000, chunkMin: 1000, chunkMax: 32000, keepRounds: 3, keepRoundTokens: 32000, bigGate: 650000 } }, "session", () => {}, () => {});
+  ok(String(inside(treeRec2, "spine.presetRecommended")[0]?.props?.className).includes("sp-btn-primary"), "推荐值保存后高亮推荐档");
 }
 
 console.log("9c. 打开就回到最上面");
@@ -330,6 +451,292 @@ console.log("9c. 打开就回到最上面");
   delete globalThis.getComputedStyle;
 }
 
+console.log("9d. 文档文件可以打开（走宿主 remote，不写死本机路径）");
+{
+  const BS = String.fromCharCode(92);
+  const long = ["C:", "Users", "someone", ".dsh", "profiles", "desktop", "node_modules", "dsh-live-compact-x", "README.md"].join(BS);
+  const tail = "…" + BS + ["node_modules", "dsh-live-compact-x", "README.md"].join(BS);
+  const collect = (node, pred, out = []) => {
+    if (!node || typeof node !== "object") return out;
+    if (Array.isArray(node)) { for (const n of node) collect(n, pred, out); return out; }
+    if (pred(node)) out.push(node);
+    for (const c of node.children || []) collect(c, pred, out);
+    return out;
+  };
+  const labelOf = (n) => (n.children || []).filter((c) => typeof c === "string").join("");
+
+  ok(T.shortPath("C:/p/README.md") === "C:/p/README.md", "短路径原样显示，不硬拆");
+  ok(T.shortPath(long) === tail, "长路径只露尾巴：" + T.shortPath(long));
+  ok(long.includes("Users" + BS + "someone") && !T.shortPath(long).includes("someone"), "面板上不再暴露本机用户名");
+
+  const copied = [];
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { clipboard: { writeText: (text) => { copied.push(text); } } },
+  });
+
+  const previews = [];
+  const row = T.DocRow({ t: (key) => key, label: "README", value: long, which: "readme", exists: true, preview: null, onPreview: (which) => previews.push(which) });
+  const rowButtons = collect(row, (n) => n.type === "button");
+  const previewBtn = rowButtons.find((b) => labelOf(b) === "spine.preview");
+  const copyBtn = rowButtons.find((b) => labelOf(b) === "spine.copyPath");
+  ok(rowButtons.length === 2 && Boolean(previewBtn) && Boolean(copyBtn), "文件行给预览和复制路径两个按钮（" + rowButtons.length + "）");
+  ok(previewBtn?.props?.disabled !== true, "文件在的时候预览可用");
+  previewBtn?.props?.onClick?.();
+  ok(previews.length === 1 && previews[0] === "readme", "点预览去读 README");
+  copied.length = 0;
+  copyBtn?.props?.onClick?.();
+  ok(copied.length === 1 && copied[0] === long, "复制路径给的是完整路径");
+  ok(!rowButtons.some((b) => labelOf(b) === "spine.open"), "不再放注定打不开的「打开」按钮");
+
+  const previewRow = T.DocRow({
+    t: (key) => key, label: "README", value: long, which: "readme", exists: true,
+    preview: { which: "readme", text: "# Spine", truncated: true }, onPreview() {},
+  });
+  ok(collect(previewRow, (n) => n.props?.className === "sp-docpre").length === 1, "预览把正文铺在行下面");
+  ok(collect(previewRow, (n) => n.type === "pre").length === 1, "正文用 pre 保留换行");
+  ok(collect(previewRow, (n) => labelOf(n) === "spine.previewTruncated").length === 1, "截断时说明只显示前 4 万字");
+
+  const loadingRow = T.DocRow({ t: (key) => key, label: "README", value: long, which: "readme", exists: true, loading: true, onPreview() {} });
+  const loadingBtn = collect(loadingRow, (n) => n.type === "button").find((b) => labelOf(b) === "spine.previewLoading");
+  ok(Boolean(loadingBtn) && loadingBtn.props.disabled === true, "读取中按钮禁用并换文案");
+
+  const revealCalls = [];
+  T.setBridgeCtx({ get: () => ({ session: { openWorkspacePath: (request) => { revealCalls.push(request); return Promise.resolve({ ok: true }); } } }) });
+  await T.openHostPath(long, "reveal");
+  ok(revealCalls.length === 1 && revealCalls[0].action === "reveal", "reveal 走 action=reveal");
+  T.setBridgeCtx(null);
+  const bare = await T.openHostPath(long, "open");
+  ok(bare.ok === false && bare.reason === "no-remote", "没有 remote 的宿主如实报打不开：" + bare.reason);
+
+  const missRow = T.DocRow({ t: (key) => key, label: "CHANGELOG", value: long, which: "changelog", exists: false });
+  const missPreview = collect(missRow, (n) => n.type === "button").find((b) => labelOf(b) === "spine.preview");
+  ok(Boolean(missPreview) && missPreview.props.disabled === true, "文件不在时预览按钮禁用");
+  ok(collect(missRow, (n) => labelOf(n) === "spine.missing").length === 1, "文件不在时如实标缺，不假装能看");
+
+  const urlRow = T.DocRow({ t: (key) => key, label: "Repo", value: "https://example.test/r", href: "https://example.test/r" });
+  const urlButtons = collect(urlRow, (n) => n.type === "button");
+  ok(urlButtons.length === 1 && labelOf(urlButtons[0]) === "spine.copy", "地址行只给复制，链接本身可点");
+  ok(collect(urlRow, (n) => n.props?.className === "sp-path sp-doclink").length === 1, "地址行是外链");
+}
+console.log("9e. 构成条按刀切段，官方英文不进面板");
+{
+  const slices = T.cutBars(cuts);
+  ok(slices.length === 5, "token 大于 0 的每一刀都有自己一段（" + slices.length + "）");
+  ok(slices.map((s) => s.kind).join(",") === "small,merge,big,official,plugin", "同一种刀聚在一起：" + slices.map((s) => s.kind).join(","));
+  ok(slices.filter((s) => s.first).map((s) => s.kind).join(",") === "merge,big,official,plugin", "每种刀的第一段才留组间距");
+  ok(T.cutBars([]).length === 0 && T.cutBars([{ tokens: 0 }]).length === 0, "没有量就不画");
+  ok(T.cutBars([{ tokens: 5, kind: "merge" }, { tokens: 9, kind: "small" }]).map((s) => s.kind).join(",") === "small,merge", "顺序按小刀/中刀/大刀排，不按时间乱跳");
+
+  let cutBar = null;
+  walk(tree, (entry) => { const n = entry.node; if (n && n.props?.className === "sp-bar sp-bar-cut") cutBar = n; });
+  ok(Boolean(cutBar), "本会话用按刀切段的构成条");
+  ok(cutBar && cutBar.children.length === 5, "本会话构成条画了 5 段（" + (cutBar && cutBar.children.length) + "）");
+  ok(cutBar && String(cutBar.children[0].props.style.flexGrow) === "4000", "段宽按这一刀的 token 撑开");
+  ok(cutBar && cutBar.children[0].props.title.includes("4.0k"), "悬停给这一刀的数量：" + (cutBar && cutBar.children[0].props.title));
+  ok(cutBar && String(cutBar.children[1].props.className).includes("sp-seg-first"), "换刀处留组间距，看得出切了几刀");
+  ok(cutBar && !String(cutBar.children[0].props.className).includes("sp-seg-first"), "第一段不留多余间距");
+  ok(T.SPINE_CSS.includes(".sp-bar-cut .sp-seg{flex-shrink:1;box-shadow:inset -1px 0 0"), "刀与刀之间有分割线");
+
+  let kindBar = null;
+  walk(allTree, (entry) => { const n = entry.node; if (n && n.props?.className === "sp-bar") kindBar = n; });
+  ok(Boolean(kindBar) && kindBar.children.length === 3, "全部会话没有逐刀记录，仍按刀法分段（" + (kindBar && kindBar.children.length) + "）");
+
+  const englishCut = { ...cuts[5], preview: "This is an automatically generated checkpoint condensing an earlier span." };
+  const englishText = texts(T.CutRow({ cut: englishCut, t: (key) => key, dir: "", index: 1 }));
+  ok(englishText.includes("spine.previewEnglish") && !englishText.includes("automatically generated"), "官方英文摘要换成一句中文说明");
+  const chineseCut = { ...cuts[0], preview: "Kept lines 照原句抄出。" };
+  const chineseText = texts(T.CutRow({ cut: chineseCut, t: (key) => key, dir: "", index: 2 }));
+  ok(chineseText.includes("照原句抄出") && !chineseText.includes("spine.previewEnglish"), "中文预览照常显示");
+  const blankText = texts(T.CutRow({ cut: { ...cuts[0], preview: "" }, t: (key) => key, dir: "", index: 3 }));
+  ok(!blankText.includes("spine.previewEnglish"), "没有正文的小刀不硬塞英文说明");
+}
+console.log("9f. 旋钮参考范围：每个刀把都写清楚范围 / 常用");
+{
+  const groups = T.KNOB_GROUPS.flatMap((g) => g.keys);
+  ok(groups.every((name) => T.KNOB_META[name]), "15 个旋钮都有参考范围（" + groups.length + "）");
+  ok(T.fmtKnobValue("chunkMax", 32000) === "32.0k", "token 按 k 显示：" + T.fmtKnobValue("chunkMax", 32000));
+  ok(T.fmtKnobValue("officialCooldownMs", 1200000) === "20min", "毫秒按分钟显示：" + T.fmtKnobValue("officialCooldownMs", 1200000));
+  ok(T.fmtKnobValue("officialCooldownMs", 3600000) === "1h", "整小时不带小数");
+  ok(T.fmtKnobValue("spanBandRatio", 0.06) === "6.0%" && T.fmtKnobValue("spanBandRatio", 0) === "0", "比例按百分比显示：" + T.fmtKnobValue("spanBandRatio", 0.06));
+  const range = T.knobRange((key) => key, "chunkMax");
+  ok(range.includes("spine.rangeLabel") && range.includes("128k") && range.includes("spine.usualLabel") && range.includes("16.0k"), "范围文案带上下限与常用区间：" + range);
+  ok(T.knobRange((key) => key, "officialAbove").includes("200k") && !T.knobRange((key) => key, "officialAbove").includes("0–200k"), "大刀启用线不再从 0 起：" + T.knobRange((key) => key, "officialAbove"));
+  ok(T.knobRange((key) => key, "pointerTokens").includes("spine.zeroPointer"), "pointerTokens 的 0 另有含义（这个旋钮没上面板）");
+  ok(T.knobRange((key) => key, "nope") === "", "没有元数据的旋钮不硬编");
+  let ranges = 0;
+  walk(tree, (entry) => { const n = entry.node; if (n && n.props?.className === "sp-field-range") ranges += 1; });
+  ok(ranges === 15, "面板上 15 个旋钮都印了参考范围（" + ranges + "）");
+  const sliders = [];
+  walk(tree, (entry) => { const n = entry.node; if (n && n.type === "input" && n.props?.type === "range") sliders.push(n); });
+  ok(sliders.length === 15, "15 个旋钮都画成滑块（" + sliders.length + "）");
+  const ratio = sliders.find((n) => n.props.max === "0.5");
+  ok(ratio && ratio.props.step === "0.01", "比例旋钮按 0.01 步进");
+  ok(sliders.filter((n) => n.props.max === "650000").length === 2, "大刀启用线/中刀启用线最高 65 万");
+  ok(sliders.filter((n) => n.props.max === "1000000").length === 1, "只有绝对停切线还允许到 100 万");
+  const cool = sliders.filter((n) => n.props.min === "60000");
+  ok(cool.length === 2, "两处冷却时间最低 1 分钟，拖不到 0（" + cool.length + "）");
+}
+
+console.log("9g. 滑块跟手、开关看草稿");
+{
+  const slidersOf = (tree) => {
+    const out = [];
+    walk(tree, (entry) => { const n = entry.node; if (n && n.type === "input" && n.props?.type === "range") out.push(n); });
+    return out;
+  };
+  const model = new SettingsFormModel({}, []);
+  const tree2 = T.renderPanel({ t: (key) => key, model, actions: model.actions() }, fakeState, "session", () => {}, () => {});
+  const maxSlider = slidersOf(tree2).find((n) => n.props.max === "128000");
+  ok(Boolean(maxSlider), "一刀上限是滑块");
+  maxSlider.props.onChange({ target: { value: "48000" } });
+  ok(model.edits.some(([name, text]) => name === "chunkMax" && text === "48000"), "拖动滑块把值写进草稿（48000）");
+  maxSlider.props.onChange({ target: { value: "not-a-number" } });
+  ok(model.edits.filter(([name]) => name === "chunkMax").length === 1, "非数字的拖动值不写进配置");
+
+  // 开着中刀、但草稿里已经改成 0：开关必须显示为关（否则永远关不掉）
+  const draftOff = new SettingsFormModel({}, []);
+  draftOff.overrides = { deepCutAbove: "0" };
+  const onState = { ...fakeState, settings: { ...fakeState.settings, deepCutAbove: 120000 } };
+  const treeOff = T.renderPanel({ t: (key) => key, model: draftOff, actions: draftOff.actions() }, onState, "session", () => {}, () => {});
+  const switches = [];
+  walk(treeOff, (entry) => { const n = entry.node; if (n && n.type === "input" && n.props?.type === "checkbox" && !n.props["data-knob"]) switches.push(n); });
+  ok(switches[0] && switches[0].props.checked === false, "草稿关掉中刀后，开关立刻显示为关");
+  switches[0].props.onChange({ target: { checked: true } });
+  ok(draftOff.edits.length === 0, "从关到开仍然先弹确认，不直接写");
+
+  // shell() 还没服务（返回 {}）时，控件不能整片变灰
+  const blind = { bind: () => {}, shell: () => ({}), field: () => ({ value: "", overridden: false }), actions: () => ({ edit() {}, resetField() {}, save() {}, discard() {} }), dispose() {} };
+  const treeBlind = T.renderPanel({ t: (key) => key, model: blind, actions: blind.actions() }, fakeState, "session", () => {}, () => {});
+  const blindSliders = slidersOf(treeBlind);
+  ok(blindSliders.length === 15 && blindSliders.every((n) => n.props.disabled !== true), "配置模型还没服务时滑块也能拖");
+  const blindBoxes = [];
+  walk(treeBlind, (entry) => { const n = entry.node; if (n && n.type === "input" && n.props?.type === "checkbox" && !n.props["data-knob"]) blindBoxes.push(n); });
+  ok(blindBoxes[0] && blindBoxes[0].props.disabled !== true, "中刀开关也不变灰");
+}
+
+console.log("9g. 调试信息不再糊原始 JSON");
+{
+  let dbgCard = null;
+  walk(tree, (entry) => {
+    const n = entry.node;
+    if (!n || n.type !== "details" || n.props?.className !== "sp-details sp-card") return;
+    const head = (n.children || [])[0];
+    const label = [];
+    if (head) walk(head, (x) => { if (x.kind === "text") label.push(x.value); });
+    if (label[0] === "spine.debug") dbgCard = n;
+  });
+  ok(Boolean(dbgCard), "找得到调试信息卡");
+  const dbgText = texts(dbgCard);
+  ok(!dbgText.includes('"kinds"') && !dbgText.includes('"savedBy"') && !dbgText.includes('"chunkMax"'), "不再把原始 JSON 糊在面板上");
+  const collect = (node, pred, out = []) => {
+    if (!node || typeof node !== "object") return out;
+    if (Array.isArray(node)) { for (const item of node) collect(item, pred, out); return out; }
+    if (pred(node)) out.push(node);
+    for (const child of node.children || []) collect(child, pred, out);
+    return out;
+  };
+  const dbgRows = collect(dbgCard, (n) => n.props?.className === "sp-dbg-row");
+  ok(dbgRows.length === Object.keys(fakeState.settings).length, "生效设置按旋钮逐行列出（" + dbgRows.length + "）");
+  ok(dbgText.includes("一刀上限") && dbgText.includes("32.0k"), "旋钮名用中文标签、值带单位");
+  ok(dbgText.includes("6.0%"), "比例按百分比显示");
+  ok(!dbgText.includes("Users" + String.fromCharCode(92) + "HP"), "调试信息不把本机用户名摊出来（路径只露尾巴）：" + dbgText.slice(0, 60));
+  ok(dbgText.includes("spine.knifeSmall 2") && dbgText.includes("spine.knifePlugin 1"), "计数按刀法摊开：" + dbgText.slice(0, 80));
+  const copies = collect(dbgCard, (n) => n.type === "button").filter((n) => {
+    const label = [];
+    walk(n, (x) => { if (x.kind === "text") label.push(x.value); });
+    const text = label.join("");
+    return text === "spine.copyCounts" || text === "spine.copySettings";
+  });
+  ok(copies.length === 2 && copies[0] !== copies[1], "计数与设置各给一个（名字分得清）复制按钮（" + copies.length + "）");
+  const copied = [];
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { clipboard: { writeText: (text) => { copied.push(text); } } },
+  });
+  copies[1]?.props?.onClick?.();
+  ok(copied.length === 1 && copied[0].includes('"chunkMax":32000'), "复制出来的是完整 JSON：" + String(copied[0]).slice(0, 40));
+}
+
+console.log("9g. 时间线只铺最近 10 刀，其余展开看");
+{
+  const many = Array.from({ length: 30 }, (_, i) => ({ ...cuts[0], id: "m" + i, kind: "small", tokens: 1000 + i, time: 1000 + i }));
+  const stateMany = { ...fakeState, cuts: many, kinds: { small: 30, merge: 0, plugin: 0, big: 0, official: 0 } };
+  const rowCount = (tree) => {
+    let n = 0;
+    walk(tree, (entry) => { if (entry.node && entry.node.props && entry.node.props.className === "sp-row") n += 1; });
+    return n;
+  };
+  const labelOf = (node) => { const out = []; walk(node, (x) => { if (x.kind === "text") out.push(x.value); }); return out.join(""); };
+  const buttonByText = (tree, prefix) => {
+    let hit = null;
+    walk(tree, (entry) => {
+      const n = entry.node;
+      if (!n || n.type !== "button") return;
+      if (labelOf(n).startsWith(prefix)) hit = n;
+    });
+    return hit;
+  };
+  const treeMany = T.renderPanel({ t: (key) => key, model, actions }, stateMany, "session", () => {}, () => {});
+  ok(rowCount(treeMany) === 10, "默认只画最近 10 刀（" + rowCount(treeMany) + "）");
+  ok(texts(treeMany).includes("spine.expandRest") && texts(treeMany).includes("20"), "还有 20 刀时给展开入口：" + texts(treeMany).slice(0, 0));
+  ok(String(T.SPINE_CSS).includes(".sp-row") && String(T.SPINE_CSS).includes("padding:1px 6px"), "时间线行排得更紧（padding 1px）");
+  let toggled = 0;
+  const treeAll = T.renderPanel({ t: (key) => key, model, actions }, stateMany, "session", () => {}, () => {}, undefined, { timelineAll: true, toggleTimeline: () => { toggled += 1; } });
+  ok(rowCount(treeAll) === 30, "展开后画满 30 刀（" + rowCount(treeAll) + "）");
+  ok(texts(treeAll).includes("spine.onlyRecent"), "展开后能收回最近 10 刀");
+  buttonByText(treeAll, "spine.onlyRecent")?.props?.onClick?.();
+  ok(toggled === 1, "收回按钮真的切回去了");
+  ok(String(T.SPINE_CSS).includes(".sp-scroll-tall{max-height:420px"), "展开的列表限高可滚，不把面板撑长");
+  const treeFew = T.renderPanel({ t: (key) => key, model, actions }, fakeState, "session", () => {}, () => {}, undefined, {});
+  ok(!texts(treeFew).includes("spine.expandRest"), "不足 10 刀时不显示展开按钮");
+}
+
+console.log("9h. 滑块上下限：不许从 0 开始，关掉用勾");
+{
+  const meta = T.KNOB_META;
+  ok(meta.officialAbove.min === 200000 && meta.deepCutAbove.min === 100000, "大刀/中刀启用线从 20 万 / 10 万起");
+  ok(meta.paybackTurns.min === 1 && meta.spanBandRatio.min === 0.01 && meta.minNetGain.min === 500, "小刀的回本/比例/门槛各有下限");
+  ok(meta.chunkMax.min === 8000 && meta.chunkMin.min === 1000, "单刀上下限抬到能用的区间");
+  ok(meta.officialCooldownMs.min === 60000 && meta.mergeCooldownMs.min === 60000, "冷却最低 1 分钟");
+  const rangeMins = [];
+  walk(tree, (entry) => {
+    const n = entry.node;
+    if (n && n.type === "input" && n.props && n.props.type === "range") rangeMins.push(String(n.props.min));
+  });
+  ok(rangeMins.length === 15 && rangeMins.every((value) => value !== "0"), "15 个滑块没有一个是 0 起（" + rangeMins.join(",") + "）");
+  let minis = 0;
+  walk(tree, (entry) => {
+    const n = entry.node;
+    if (n && n.props && String(n.props.className || "").startsWith("sp-mini")) minis += 1;
+  });
+  ok(minis === 4, "回本/比例/净收益/大刀各配一个启用勾（" + minis + "）");
+  const findKnob = (node, name, type) => {
+    let hit = null;
+    walk(node, (entry) => {
+      const n = entry.node;
+      if (n && n.type === "input" && n.props && n.props["data-knob"] === name && n.props.type === type) hit = n;
+    });
+    return hit;
+  };
+  const model5 = new SettingsFormModel({}, []);
+  const treeH = T.renderPanel({ t: (key) => key, model: model5, actions: model5.actions() }, fakeState, "session", () => {}, () => {});
+  const officialBox = findKnob(treeH, "officialAbove", "checkbox");
+  ok(Boolean(officialBox), "大刀启用线有启用勾");
+  officialBox.props.onChange({ target: { checked: false } });
+  ok(model5.edits.some(([name, value]) => name === "officialAbove" && value === "0"), "取消勾选写 0 = 关");
+  officialBox.props.onChange({ target: { checked: true } });
+  ok(model5.edits.some(([name, value]) => name === "officialAbove" && value === "300000"), "勾上回到 30 万，不是 0");
+  ok(!findKnob(treeH, "deepCutAbove", "checkbox"), "中刀启用线没有第二个勾（组标题那个开关说了算）");
+  const offState = { ...fakeState, settings: { ...fakeState.settings, paybackTurns: 0 } };
+  const treeOff = T.renderPanel({ t: (key) => key, model, actions }, offState, "session", () => {}, () => {});
+  ok(texts(treeOff).includes("spine.offState"), "关着的旋钮显示「关」而不是 0");
+  const pbRange = findKnob(treeOff, "paybackTurns", "range");
+  ok(pbRange && pbRange.props.disabled === true, "关着的旋钮滑块置灰");
+  const pbBox = findKnob(treeOff, "paybackTurns", "checkbox");
+  ok(pbBox && pbBox.props.checked === false, "关着的旋钮勾是空的");
+}
+
 console.log("10. 计数不受时间线长度影响");
 {
   // 时间线只留最近几刀，但累计计数是投影给的：视图要按计数算，不能拿时间线长度充数。
@@ -344,10 +751,10 @@ console.log("11. 设置值缺失时的兜底");
 {
   const noSettings = { ...fakeState, settings: undefined };
   const t2 = T.renderPanel({ t: (key) => key, model, actions }, noSettings, "session", () => {}, setScope);
-  ok(texts(t2).includes("spine.knobs"), "没有设置值也给旋钮区");
+  ok(texts(t2).includes("spine.cutPoint"), "没有设置值也给旋钮区");
   let inputs = 0;
-  walk(t2, (entry) => { const n = entry.node; if (n && n.type === "input" && n.props?.type === "number") inputs += 1; });
-  ok(inputs === 15, "15 个数字输入仍然渲染（" + inputs + "）");
+  walk(t2, (entry) => { const n = entry.node; if (n && n.type === "input" && n.props?.type === "range") inputs += 1; });
+  ok(inputs === 15, "15 个滑块仍然渲染（" + inputs + "）");
 }
 
 console.log("12. apply()：样式注入与页签注册");
@@ -372,8 +779,213 @@ ok(view.options.id === "dsh-live-compact-x#cuts" && view.options.order === 25, "
 ok(typeof view.options.label === "function" && view.options.label() === "tab.spine", "标签是本地化函数");
 const rendered = view.component({ useProjection: () => fakeState });
 ok(texts(rendered).includes("549k"), "通过注册入口也能渲染出统计");
+let rootEl = null;
+walk(rendered, ({ kind, node }) => { if (kind === "node" && node.props && node.props.className === "sp-root") rootEl = node; });
+ok(Boolean(rootEl) && rootEl.props["data-spine-cover"] === "" && rootEl.props["data-conversation-composer-overlay"] === "", "压缩页整页铺开：根上挂了整页标记");
+ok(inserted[0].includes("[data-conversation-scroll]:has([data-spine-cover])>[data-composer-seat]"), "只在这个页签藏输入条，轨迹页共用同一属性不误伤");
+ok(inserted[0].includes("padding:12px 14px 24px") && !inserted[0].includes("padding:12px 14px 104px"), "整页之后不再给输入条留 104px");
+let reloadButton = null;
+walk(rendered, ({ kind, node }) => {
+  if (kind === "node" && node.type === "button" && String(node.props?.className || "").includes("sp-topbar-reload")) reloadButton = node;
+});
+let reloads = 0;
+const realLocation = globalThis.location;
+globalThis.location = { reload: () => { reloads += 1; } };
+if (reloadButton) reloadButton.props.onClick();
+globalThis.location = realLocation;
+ok(Boolean(reloadButton) && reloads === 1, "顶栏有刷新按钮：桌面端没绑 Ctrl+R，点了真的 reload");
 const settingsRow = registrations.find((r) => r.options.name === "plugins.row.config");
 ok(Boolean(settingsRow), "设置页那条还在，没被面板挤掉");
+
+console.log("13. 配置桥：面板直写 spine-settings.json");
+{
+  const realFetch = globalThis.fetch;
+  const realDocument = globalThis.document;
+  globalThis.document = { baseURI: "http://127.0.0.1:7124/" };
+  const calls = [];
+  let failNext = false;
+  const switches = { file: "C:/u/.dsh/spine-switch.json", global: true, session: true, sessionDisabled: false, disabledCount: 0 };
+  const value = (body) => ({
+    file: "C:/u/.dsh/spine-settings.json",
+    effective: { minNetGain: 3000, deepCutAbove: 0 },
+    defaults: { minNetGain: 3000, deepCutAbove: 0 },
+    overrides: {},
+    fixed: {},
+    switch: { ...switches },
+    presets: {
+      file: "C:/u/.dsh/spine-presets.json",
+      workspaceKey: "--D-ws--",
+      workspaceKnown: true,
+      scopes: {
+        session: body.op === "preset-save"
+          ? { active: "p-1", items: [{ id: "p-1", name: body.name || "夜间省流", values: body.values || {}, createdAt: 1, updatedAt: 2 }] }
+          : { active: "", items: [] },
+        workspace: { active: "", items: [] },
+        all: { active: "", items: [] },
+      },
+      layer: body.op === "preset-save" ? { scope: "session", id: "p-1", name: body.name || "夜间省流" } : null,
+    },
+    ...(body.op === "save" ? { overrides: body.patch, savedAt: 1234567 } : {}),
+    ...(body.op === "switch" ? { switch: { ...switches, global: body.enabled, session: body.enabled }, savedAt: 7654321 } : {}),
+  });
+  globalThis.fetch = async (url, init) => {
+    const body = init && init.body ? JSON.parse(init.body) : {};
+    calls.push({ url: String(url), body, method: init && init.method });
+    if (failNext) return { status: 500, json: async () => ({ ok: false, code: "internal", message: "写不进去" }) };
+    if (body.op === "doc") return { status: 200, json: async () => ({ ok: true, value: { available: true, path: "C:/u/README.md", text: "# Spine", truncated: false } }) };
+    return { status: 200, json: async () => ({ ok: true, value: value(body) }) };
+  };
+
+  const store = T.createSettingsStore();
+  ok(store.getSnapshot().status === "idle", "还没连的时候是 idle");
+  await store.load();
+  const ready = store.getSnapshot();
+  ok(ready.status === "ready" && ready.effective.minNetGain === 3000, "describe 拿到生效值");
+  ok(calls[0].url.endsWith("/api/dsh-live-compact-x-settings") && calls[0].method === "POST", "走面板自己的桥，POST 到前缀本身：" + calls[0].url);
+ok(calls[0].body.op === "describe", "op 放在 body 里，不靠 URL 分段");
+  store.edit("minNetGain", "5000");
+  ok(store.getSnapshot().draft.minNetGain === "5000", "改一格立刻进草稿");
+  ok(store.dirty("minNetGain") && !store.dirty("bigGate"), "只标改过的那一格");
+  await store.save();
+  const saveCall = calls.find((c) => c.body.op === "save");
+  ok(Boolean(saveCall) && saveCall.body.patch.minNetGain === "5000", "保存把草稿整批交给桥");
+  const savedSnap = store.getSnapshot();
+  ok(Object.keys(savedSnap.draft).length === 0 && savedSnap.savedAt > 0, "保存成功后草稿清空、留时间戳");
+
+  failNext = true;
+  store.edit("bigGate", "400000");
+  const failed = await store.save();
+  ok(failed === false && store.getSnapshot().saveError.includes("写不进去"), "保存失败把原因留下来：" + store.getSnapshot().saveError);
+  ok(store.dirty("bigGate"), "失败时草稿不清空，还能重试");
+
+  failNext = false;
+  await store.saveNow({ deepCutAbove: 120000 });
+  const midCall = calls.filter((c) => c.body.op === "save").pop();
+  ok(Boolean(midCall) && midCall.body.patch.deepCutAbove === 120000, "中刀开关走单键直写");
+
+  await store.openDoc("readme");
+  ok(store.getSnapshot().doc && store.getSnapshot().doc.text === "# Spine", "预览把正文读回来");
+
+  // 总开关：describe 带 sid，切换只发一条 op=switch
+  ok(calls[0].body.sid === "", "第一次 describe 也带 sid（空串）");
+  await store.load("sess-a");
+  const sidCall = calls.filter((c) => c.body.op === "describe").pop();
+  ok(sidCall.body.sid === "sess-a" && store.getSnapshot().sid === "sess-a", "换会话时重新 describe，带上 sid");
+  ok(store.getSnapshot().sw && store.getSnapshot().sw.global === true, "describe 带回开关状态");
+  const switched = await store.setSwitch("all", false, "sess-a");
+  const switchCall = calls.filter((c) => c.body.op === "switch").pop();
+  ok(switched === true && switchCall.body.scope === "all" && switchCall.body.enabled === false && switchCall.body.sid === "sess-a", "全部会话关闭走 op=switch");
+  ok(store.getSnapshot().sw.global === false && store.getSnapshot().swSavedAt > 0, "切完状态与时间戳都更新");
+
+  // 顶栏开关按当前范围显示：本会话读 session，全部会话读 global
+  const ui = {
+    cfg: { status: "ready", saving: false, swSaving: false, draft: {}, effective: fakeState.settings, defaults: {}, fixed: {}, sw: { global: true, session: false } },
+    store,
+  };
+  const scopeBtn = () => {};
+  const treeSw = T.renderPanel({ t: (k) => k, model, actions }, { ...fakeState, sid: "sess-a" }, "session", () => {}, scopeBtn, {}, ui);
+  let master = null;
+  walk(treeSw, ({ kind, node }) => { if (kind === "node" && node.type === "input" && node.props && node.props["data-master"]) master = node; });
+  ok(Boolean(master) && master.props["data-master"] === "session" && master.props.checked === false, "本会话范围显示会话开关（关）");
+  const treeAll = T.renderPanel({ t: (k) => k, model, actions }, { ...fakeState, sid: "sess-a" }, "all", () => {}, scopeBtn, {}, ui);
+  let masterAll = null;
+  walk(treeAll, ({ kind, node }) => { if (kind === "node" && node.type === "input" && node.props && node.props["data-master"]) masterAll = node; });
+  ok(Boolean(masterAll) && masterAll.props["data-master"] === "all" && masterAll.props.checked === true, "全部会话范围显示全局开关（开）");
+  const before = calls.filter((c) => c.body.op === "switch").length;
+  masterAll.props.onChange({ target: { checked: false } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const flipped = calls.filter((c) => c.body.op === "switch").pop();
+  ok(calls.filter((c) => c.body.op === "switch").length === before + 1 && flipped.body.scope === "all" && flipped.body.enabled === false, "点开关真的发出去");
+
+  failNext = true;
+  const failedSwitch = await store.setSwitch("session", false, "sess-a");
+  ok(failedSwitch === false && store.getSnapshot().swError.includes("写不进去"), "切换失败把原因留下来");
+  failNext = false;
+
+  // 自定义档：一个 + 号、三种范围，存/套用/删都走同一条桥
+  store.edit("minTokens", "12345");
+  const savedPreset = await store.savePreset("session", "夜间省流");
+  const presetCall = calls.filter((c) => c.body.op === "preset-save").pop();
+  ok(savedPreset === true && presetCall.body.scope === "session" && presetCall.body.name === "夜间省流", "存自定义档走 op=preset-save", JSON.stringify({ savedPreset, call: presetCall && presetCall.body, snap: store.getSnapshot().presets, status: store.getSnapshot().status, err: store.getSnapshot().presetError }));
+  ok(presetCall.body.values.minTokens === "12345", "存的是当前草稿");
+  ok(store.getSnapshot().presets && store.getSnapshot().presets.scopes.session.items.length === 1, "存完带回最新档位列表");
+  ok(store.getSnapshot().presets.layer && store.getSnapshot().presets.layer.id === "p-1", "存完这个档就在生效");
+  await store.applyPreset("session", "p-1");
+  const applyCall = calls.filter((c) => c.body.op === "preset-apply").pop();
+  ok(applyCall.body.id === "p-1" && applyCall.body.sid === "sess-a", "套用档带 sid");
+  await store.applyPreset("session", "");
+  ok(calls.filter((c) => c.body.op === "preset-apply").pop().body.id === "", "空 id 等于取消套用");
+  failNext = true;
+  const failedPreset = await store.savePreset("all", "坏档");
+  ok(failedPreset === false && store.getSnapshot().presetError.includes("写不进去"), "存档失败把原因留下来");
+  failNext = false;
+  await store.deletePreset("session", "p-1");
+  ok(calls.filter((c) => c.body.op === "preset-delete").pop().body.id === "p-1", "删档走 op=preset-delete");
+
+  const presetCfg = {
+    status: "ready", saving: false, draft: {}, effective: fakeState.settings, defaults: {}, fixed: {},
+    presetSaving: false, presetError: "", sw: { global: true, session: true },
+    presets: {
+      workspaceKey: "--D-ws--", workspaceKnown: true,
+      scopes: {
+        session: { active: "p-1", items: [{ id: "p-1", name: "夜间省流", values: { minTokens: 12345 }, createdAt: 1, updatedAt: 2 }] },
+        workspace: { active: "", items: [] },
+        all: { active: "", items: [] },
+      },
+      layer: { scope: "session", id: "p-1", name: "夜间省流" },
+    },
+  };
+  let opened = 0, applied = [], deleted = [], confirmed = "";
+  const stubStore = {
+    ...store,
+    applyPreset: (scope, id) => { applied.push([scope, id]); return Promise.resolve(true); },
+    deletePreset: (scope, id) => { deleted.push([scope, id]); return Promise.resolve(true); },
+  };
+  const presetUi = {
+    form: false, name: "", scope: "session", confirm: "",
+    open: () => { opened += 1; }, close: () => {},
+    setName: () => {}, setScope: () => {}, setConfirm: (value) => { confirmed = value; presetUi.confirm = value; },
+  };
+  const presetTree = T.renderPanel({ t: (k) => k, model, actions }, { ...fakeState, sid: "sess-a" }, "session", () => {}, () => {}, {}, { cfg: presetCfg, store: stubStore, preset: presetUi });
+  let addBtn = null, chip = null, banner = null;
+  walk(presetTree, ({ kind, node }) => {
+    if (kind !== "node" || !node.props) return;
+    if (node.props["data-preset-add"]) addBtn = node;
+    if (node.props["data-preset-chip"]) chip = node;
+    if (String(node.props.className || "").includes("sp-preset-active")) banner = node;
+  });
+  ok(Boolean(addBtn) && addBtn.type === "button", "自定义档右边有加号");
+  addBtn.props.onClick();
+  ok(opened === 1, "点加号打开新建表单");
+  ok(Boolean(chip) && String(chip.props.className).includes("sp-chip-on"), "生效中的会话档 chip 高亮");
+  chip.children[0].props.onClick();
+  ok(applied.length === 1 && applied[0][0] === "session" && applied[0][1] === "", "点生效中的档 = 取消套用");
+  chip.children[1].props.onClick();
+  ok(confirmed === "p-1" && deleted.length === 0, "第一次点 × 只是要确认");
+  chip.children[1].props.onClick();
+  ok(deleted.length === 1 && confirmed === "", "第二次点 × 真删");
+  ok(Boolean(banner) && texts(banner).includes("spine.presetLayer"), "生效中有一条明示");
+  const formTree = T.renderPanel({ t: (k) => k, model, actions }, { ...fakeState, sid: "sess-a" }, "session", () => {}, () => {}, {}, { cfg: presetCfg, store: stubStore, preset: { ...presetUi, form: true, name: "新档" } });
+  let nameInput = null, scopeBtns = [];
+  walk(formTree, ({ kind, node }) => {
+    if (kind !== "node" || !node.props) return;
+    if (node.props["data-preset-name"]) nameInput = node;
+    if (node.props["data-preset-scope"]) scopeBtns.push(node);
+  });
+  ok(Boolean(nameInput) && nameInput.props.value === "新档", "表单带名字输入框");
+  ok(scopeBtns.length === 3 && scopeBtns.every((btn) => !btn.props.disabled), "三种范围都能选（工作区已识别）");
+  const blindForm = T.renderPanel({ t: (k) => k, model, actions }, { ...fakeState, sid: "sess-a" }, "session", () => {}, () => {}, {}, { cfg: { ...presetCfg, presets: { ...presetCfg.presets, workspaceKnown: false } }, store: stubStore, preset: { ...presetUi, form: true, name: "" } });
+  let wsBtn = null;
+  walk(blindForm, ({ kind, node }) => { if (kind === "node" && node.props && node.props["data-preset-scope"] === "workspace") wsBtn = node; });
+  ok(Boolean(wsBtn) && wsBtn.props.disabled === true, "工作区认不出来时那一档是灰的");
+
+  const offline = T.createSettingsStore();
+  globalThis.fetch = async () => { throw new Error("fetch failed"); };
+  await offline.load();
+  ok(offline.getSnapshot().status === "unavailable" && offline.getSnapshot().error.includes("fetch failed"), "连不上时状态是 unavailable 并带原因");
+  globalThis.fetch = realFetch;
+  globalThis.document = realDocument;
+}
 
 console.log("\n通过 " + pass + " / 失败 " + fail);
 process.exit(fail ? 1 : 0);

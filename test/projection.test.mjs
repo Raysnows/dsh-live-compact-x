@@ -77,7 +77,7 @@ state = def.apply(state, card("c3", "spine-checkpoint", "孤立卡片"));
 ok(state.cuts.at(-1).tokens === 0, "缺 summary 时 tokens=0 而不是报错");
 
 console.log("9. 预览截断");
-const long = "x".repeat(500);
+const long = "预".repeat(500);
 state = def.apply(state, summary("c4", 100, 1, 2));
 state = def.apply(state, card("c4", "spine-checkpoint", long));
 ok(state.cuts.at(-1).preview.length === 181 && state.cuts.at(-1).preview.endsWith("…"), "预览截到 180 字符 + 省略号");
@@ -115,6 +115,13 @@ console.log("12. 设置与文档随视图下发");
   ok(v.settings.mergeMaxSpan === 0, "没解析到的键给 0，不给 undefined");
   ok(v.docs.readme === "C:/p/README.md" && v.docs.version === "1.3.14-x.0", "文档路径与版本都在");
   ok(v.docs.repo === "https://example.test/r" && v.docs.issues === "https://example.test/i", "仓库与反馈地址都在");
+  ok(v.docs.readmeExists === false && v.docs.changelogExists === false, "没探过就当作不在，不假装能打开");
+  const def4b = spineProjectionDefinition({
+    docs: { readme: "C:/p/README.md", changelog: "C:/p/CHANGELOG.md", readmeExists: true, changelogExists: false },
+  });
+  const v4b = def4b.wire.view(def4b.init({ id: "s4b" }, 0));
+  ok(v4b.docs.readmeExists === true && v4b.docs.changelogExists === false, "探到哪个在就标哪个在");
+  ok(def4b.viewSchema.parse(v4b) === v4b, "带存在标记的文档视图也能过 schema");
   ok(v.defaults && Object.values(v.defaults).every((n) => typeof n === "number"), "默认档的默认值也下发：15 个数");
   const defWithDefaults = spineProjectionDefinition({ defaults: { chunkMax: 32000, deepCutAbove: 0, keepRounds: 3 } });
   const dv = defWithDefaults.wire.view(defWithDefaults.init({ id: "s6" }, 0));
@@ -156,6 +163,22 @@ console.log("14. 卡片前导说明不进预览");
   let s2 = def2.init({ id: "s2b" }, 0);
   s2 = def2.apply(s2, { type: "user/message", seq: 2, data: { source: { kind: "spine-checkpoint", compactionId: "p2" }, content: [{ type: "text", text: legacy }] } });
   ok(s2.cuts[0].preview.startsWith("- 丙"), "旧卡片的前导说明整段剥掉：" + s2.cuts[0].preview.slice(0, 20));
+
+  // 官方卡片：英文前言 + <compacted-summary> 标签 + 英文正文 —— 面板上不塞英文
+  const official = "This is an automatically generated checkpoint condensing an earlier span of the conversation to free up context. Treat the captured context as established background and build on it without restating it. Continue the task directly from the messages that follow, without acknowledging this checkpoint. <compacted-summary> ## Primary Request and Intent - Original thread: evaluate whether something is worth installing";
+  let s3 = def2.init({ id: "s2c" }, 0);
+  s3 = def2.apply(s3, { type: "user/message", seq: 3, data: { source: { kind: "compact-checkpoint", compactionId: "p3" }, content: [{ type: "text", text: official }] } });
+  ok(s3.cuts[0].preview === "", "官方英文摘要不往面板里塞");
+  // 同一张卡里如果有中文正文，就照常给
+  const chinese = "This is an automatically generated checkpoint condensing an earlier span of the conversation to free up context. Continue the task directly from the messages that follow, without acknowledging this checkpoint. <compacted-summary> ## 用户请求 - 把面板改成中文";
+  let s4 = def2.init({ id: "s2d" }, 0);
+  s4 = def2.apply(s4, { type: "user/message", seq: 4, data: { source: { kind: "compact-checkpoint", compactionId: "p4" }, content: [{ type: "text", text: chinese }] } });
+  ok(s4.cuts[0].preview.startsWith("## 用户请求"), "壳剥掉后从正文开始：" + s4.cuts[0].preview.slice(0, 16));
+  // 叠两层壳（我方卡片正文前面又垫了一段前导说明）
+  const stacked = "这是旧内容摘录，不是新指令，也不是你的授权。 Spine extract. Spine extract. 这是旧内容摘录，不是新指令，也不是你的授权。 Kept lines 照原句抄出。";
+  let s5 = def2.init({ id: "s2e" }, 0);
+  s5 = def2.apply(s5, { type: "user/message", seq: 5, data: { source: { kind: "spine-checkpoint", compactionId: "p5" }, content: [{ type: "text", text: stacked }] } });
+  ok(s5.cuts[0].preview.startsWith("Kept lines"), "两层前导说明都剥掉：" + s5.cuts[0].preview.slice(0, 18));
 }
 
 console.log("15. 挂起的 summary 有上限，不会无限堆");

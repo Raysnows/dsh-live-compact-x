@@ -1,5 +1,6 @@
 /** 设置系统 */
 import { existsSync, readFileSync } from "node:fs";
+import { rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -121,17 +122,33 @@ const finite = (value) => {
   return Number.isFinite(number) ? number : undefined;
 };
 
-/** 文件层设置：~/.dsh/spine-settings.json，优先级在显式 config 之下、环境变量之上。 */
-function fileSettings() {
+/** 设置文件的唯一解析处：面板桥和引擎读同一份路径，谁都不能另写一套。 */
+export function settingsFilePath() {
   try {
-    const file = process.env.SPINE_SETTINGS_FILE || join(process.env.DSH_HOME || join(homedir(), ".dsh"), "spine-settings.json");
-    return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+    return process.env.SPINE_SETTINGS_FILE || join(process.env.DSH_HOME || join(homedir(), ".dsh"), "spine-settings.json");
+  } catch {
+    return "";
+  }
+}
+
+/** 文件层的原始值（只读；解析失败按空处理，坏文件不该让引擎起不来）。 */
+export function readOverrides() {
+  const file = settingsFilePath();
+  if (!file || !existsSync(file)) return {};
+  try {
+    const raw = JSON.parse(readFileSync(file, "utf8"));
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   } catch {
     return {};
   }
 }
 
-export function readSettings(config = {}, env = process.env) {
+/** 文件层设置：~/.dsh/spine-settings.json，优先级在显式 config 之下、环境变量之上。 */
+function fileSettings() {
+  return readOverrides();
+}
+
+export function readSettings(config = {}, env = process.env, layer = null) {
   const file = fileSettings();
   const next = {};
   for (const [key, fallback] of Object.entries(DEFAULTS)) {
@@ -140,8 +157,9 @@ export function readSettings(config = {}, env = process.env) {
       const number = finite(value);
       return key === "keepRounds" && (!Number.isInteger(number) || number < 1) ? undefined : number;
     };
+    // 优先级：显式 config > 生效中的自定义档（会话 > 工作区 > 全部）> 文件 > 环境 > 默认。
     next[key] =
-      numeric(config?.[key]) ?? numeric(file?.[key]) ?? numeric(envName ? env?.[envName] : undefined) ?? fallback;
+      numeric(config?.[key]) ?? numeric(layer?.[key]) ?? numeric(file?.[key]) ?? numeric(envName ? env?.[envName] : undefined) ?? fallback;
   }
   if (!next.pointerTokens) next.pointerTokens = next.chunkMax;
   return Object.freeze(next);
@@ -227,3 +245,68 @@ export function configSchema(z, stockSchema) {
       .volatile(),
   });
 }
+
+const WRITE_KEYS = new Set(Object.keys(DEFAULTS));
+
+/** 面板能写哪些键：只认引擎真会读的字段，别让人把配置文件写成杂物间。 */
+export function isWritableKey(name) {
+  return WRITE_KEYS.has(String(name));
+}
+
+/**
+ * 写入文件层。patch 里值为 null 表示删掉这一项（回到 config / 环境 / 默认）。
+ * 只收已声明的键和有限数字：面板再怎么错，也写不出引擎不认识的配置。
+ * 先写 .tmp 再 rename：中途断电不会留下半个 JSON。
+ */
+export async function writeOverrides(patch = {}) {
+  const file = settingsFilePath();
+  if (!file) throw new Error("spine: no settings file path");
+  const next = { ...readOverrides() };
+  const changed = [];
+  for (const [key, raw] of Object.entries(patch || {})) {
+    if (!WRITE_KEYS.has(key)) throw new Error(`spine: unknown setting "${key}"`);
+    if (raw === null || raw === undefined) {
+      if (Object.prototype.hasOwnProperty.call(next, key)) { delete next[key]; changed.push(key); }
+      continue;
+    }
+    const number = finite(raw);
+    if (number === undefined || !Number.isFinite(number) || number < 0 || number > 1e7) {
+      throw new Error(`spine: setting "${key}" must be a finite number between 0 and 10000000`);
+    }
+    next[key] = key === "keepRounds" ? Math.max(1, Math.round(number)) : number;
+    changed.push(key);
+  }
+  if (!changed.length) return { file, overrides: next };
+  const text = JSON.stringify(next, null, 2) + "\n";
+  const temp = file + ".tmp";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await writeFile(temp, text, "utf8");
+      await rename(temp, file);
+      return { file, overrides: next };
+    } catch (error) {
+      if (attempt === 2) { try { await rm(temp, { force: true }); } catch {} throw error; }
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+  }
+  return { file, overrides: next };
+}
+
+/** 面板桥的 describe：生效值、文件值、默认值、以及被 profile 配置固定的字段。 */
+export function describeSettings(config = {}, layer = null) {
+  const overrides = readOverrides();
+  const effective = readSettings(config, process.env, layer);
+  const fromConfig = configSnapshot(config);
+  const fixed = {};
+  for (const key of Object.keys(DEFAULTS)) {
+    if (fromConfig[key] !== undefined && fromConfig[key] !== null) fixed[key] = fromConfig[key];
+  }
+  return {
+    file: settingsFilePath(),
+    effective: { ...effective },
+    overrides,
+    defaults: { ...DEFAULTS },
+    fixed,
+  };
+}
+

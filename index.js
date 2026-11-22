@@ -21,6 +21,8 @@ import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadBase, loadCompaction, loadLlm } from "./adapter.js";
 import { DEFAULTS, engineConfig, readSettings } from "./settings.js";
+import { presetLayerFor } from "./presets.js";
+import { compactionEnabled } from "./switch.js";
 import { attachBackupHint, backgroundJobId, backupClaimOk, buildCard, collectJobs, cutLongReadRound, digestMissingFacts, finishedToolRounds, indexToolCalls, isToolFailure, jobCutDecision, keptToolRounds, messageText, planMessages, pointerOnlyText, pointerSpanAllowed, RAIL_TOKENS, readResultLabel, reservedCutEnd, resolveEngine, resolveProviderBaseURL, roundHasLongRead, selectCutIndexes, shadowSections, takeLocalCut, withoutFullBackupClaim } from "./plan.js";
 import { captureOwnedToolResult, contentHash, PRUNE_MARKER, rawExcerptText, rawName, readRawToolResult, restoreToolText, runPruneAfterCapture, verifiedRaw } from "./raw.js";
 import { netGainTooSmall } from "./netgain.js";
@@ -1060,7 +1062,8 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
       });
       ctx.on("session/event", (session, event) => {
         try {
-          if (this.standDown?.()) return;
+          // 总开关关着（全部会话 / 本条会话）就什么都不记、不切，连抓取都停。
+          if (this.standDown?.() || !compactionEnabled(sessionKey({ session }))) return;
           this.noteEvent(session, event);
           if (event?.type === "turn/end" && isCuttableTurnEnd(event)) {
             const state = this.sessionState.get(sessionKey({ session }));
@@ -1133,6 +1136,12 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
       const message = error instanceof Error ? error.message : String(error);
       ctx.logger?.warn?.(`spine: 本会话未接管自动小切。${message}`);
     }
+  }
+
+  /** 这一回合真正生效的设置：显式 config > 自定义档（会话/工作区/全部）> 文件 > 环境 > 默认。 */
+  settingsFor(agentOrSession) {
+    const sid = sessionKey(agentOrSession && agentOrSession.session ? agentOrSession : { session: agentOrSession });
+    return readSettings(this.liveConfig, process.env, presetLayerFor(sid));
   }
 
   standDown() {
@@ -1246,7 +1255,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
   }
 
   startTurnMaintenance(agent, events = agent.session.snapshotEvents()) {
-    if (this.standDown?.()) return;
+    if (this.standDown?.() || !compactionEnabled(sessionKey(agent))) return;
     const state = this.stateFor(agent);
     const boundaryCompleted = Number.isInteger(state.turnEndSeq) && state.turnEndSeq >= 0;
     if (!latestTurnCompleted(events) && !boundaryCompleted) return;
@@ -1320,7 +1329,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
     job = (async () => {
       await null;
       try {
-        const settings = readSettings(this.liveConfig);
+        const settings = this.settingsFor(agent);
         const events = agent.session.snapshotEvents();
         const stoppingEnd = latestCompletedTurnEnd(events);
         const stoppingSeq = stoppingEnd?.seq;
@@ -1747,8 +1756,8 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
   }
 
   async finishTurn(agent, events, options = {}) {
-    if (this.standDown?.()) return null;
-    const settings = readSettings(this.liveConfig);
+    if (this.standDown?.() || !compactionEnabled(sessionKey(agent))) return null;
+    const settings = this.settingsFor(agent);
     const state = this.stateFor(agent);
     if (state.maintenanceAbort?.signal.aborted) return false;
     if (!state.maintenanceAbort) {
@@ -2072,7 +2081,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
       if (expected && (selected.length !== expected.length || selected.some((seq, i) => seq !== expected[i]))) {
         throw new Error("spine: selected span changed before commit");
       }
-      const strictHostContext = Number(readSettings(this.liveConfig).strictHostContext) > 0;
+      const strictHostContext = Number(this.settingsFor(agent).strictHostContext) > 0;
       const items = nodes.map(seq => ({
         type: session.eventAt(seq)?.type === "user/message" ? "user" : "other",
         ...classifyUserEvent(session, seq, strictHostContext),
@@ -2239,7 +2248,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
           this.recordDecision(state, { phase: "official-handover", result: "failed", reason: String(error?.message || error), reason_at: why });
           // 失败就地重排：一分钟后下一轮再试，而不是等满 20 分钟冷却。
           state.handoverPending = why;
-          const cd = Number(readSettings(this.liveConfig).officialCooldownMs) || 0;
+          const cd = Number(this.settingsFor(agent).officialCooldownMs) || 0;
           state.lastOfficialAt = Date.now() - Math.max(0, cd - 60000);
         } finally {
           clearTimeout(handoverTimer);
@@ -2773,7 +2782,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
       this.captureRecoveryHolds.delete(key);
       return new Set();
     }
-    return this.captureNew(session, events);
+    return this.captureNew(session, events, this.settingsFor({ session }));
   }
 
   captureRecoveryFingerprint(session, events = null) {
@@ -2956,6 +2965,8 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
   }
 
   async summarize(input, agent, signal) {
+    // 关掉之后不再用我们的刀；宿主真要压的时候交给官方摘要兜底。
+    if (!compactionEnabled(sessionKey(agent))) return this.summarizeOfficial(input, agent, signal);
     const decision = takeLocalCut(input?.liveCompact);
     const state = this.stateFor(agent);
     state.approvedCard = null;
