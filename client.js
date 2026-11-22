@@ -126,6 +126,8 @@ window.__ModuleLoader__.load({
       "spine.knifeMerge": "中刀",
       "spine.knifeOfficial": "大刀（官方）",
       "spine.knifePlugin": "旧卡片",
+      "spine.knifeShortOfficial": "大刀",
+      "spine.knifeShortPlugin": "旧卡",
       "spine.knifeStats": "刀法统计",
       "spine.colKnife": "刀法",
       "spine.colCount": "刀数",
@@ -219,6 +221,8 @@ window.__ModuleLoader__.load({
       "spine.knifeMerge": "Merge cut",
       "spine.knifeOfficial": "Official",
       "spine.knifePlugin": "Legacy card",
+      "spine.knifeShortOfficial": "Official",
+      "spine.knifeShortPlugin": "Legacy",
       "spine.knifeStats": "Knife stats",
       "spine.colKnife": "knife",
       "spine.colCount": "cuts",
@@ -256,14 +260,15 @@ window.__ModuleLoader__.load({
     const SPINE_CSS = [
       ".sp-root{box-sizing:border-box;height:100%;overflow-y:auto;padding:12px 14px 26px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5}",
       ".sp-topbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}",
-      ".sp-scope{display:inline-flex;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
+      ".sp-scope{display:inline-flex;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
+      ".sp-docrow>.sp-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}",
       ".sp-scope-btn{font:inherit;font-size:12px;padding:3px 13px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}",
       ".sp-scope-btn[data-on='1']{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);font-weight:600}",
       ".sp-topbar-sub{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
       ".sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-bottom:10px}",
       ".sp-kpi{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:8px 10px;min-width:0}",
       ".sp-kpi-label{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
-      ".sp-kpi-value{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px;letter-spacing:-.01em}",
+      ".sp-kpi-value{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".sp-kpi-hint{font-size:10.5px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-secondary));margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".sp-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;margin-bottom:10px}",
       ".sp-card-title{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:8px}",
@@ -279,8 +284,9 @@ window.__ModuleLoader__.load({
       ".sp-trow:hover{background:var(--dsw-alias-interactive-bg-hover)}",
       ".sp-trow-off{opacity:.55}",
       ".sp-knife{display:flex;align-items:center;min-width:0}",
-      ".sp-head{display:grid;grid-template-columns:20px 62px 1fr 72px 1fr 62px 42px;gap:8px;padding:0 6px 4px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
-      ".sp-row{display:grid;grid-template-columns:20px 62px 1fr 72px 1fr 62px 42px;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;font-size:12px}",
+      ".sp-head{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 54px 26px;gap:10px;padding:0 6px 4px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
+      ".sp-row{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 54px 26px;gap:10px;align-items:center;padding:4px 6px;border-radius:6px;font-size:12px}",
+      ".sp-head>span,.sp-row>span,.sp-trow>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
       ".sp-row:hover{background:var(--dsw-alias-interactive-bg-hover)}",
       ".sp-badge{font-size:10.5px;line-height:17px;padding:0 6px;border-radius:999px;border:1px solid;text-align:center;white-space:nowrap}",
       ".sp-mono{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-variant-numeric:tabular-nums}",
@@ -312,7 +318,8 @@ window.__ModuleLoader__.load({
       ".sp-input:disabled{opacity:.5}",
       ".sp-field-hint{font-size:10.5px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-secondary));overflow-wrap:anywhere}",
       ".sp-empty{color:var(--dsw-alias-label-secondary);text-align:center;padding:14px 0;font-size:12px}",
-      ".sp-foot{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:2px;flex-wrap:wrap}",
+      ".sp-foot{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:8px;flex-wrap:wrap}",
+      ".sp-dot-sep{opacity:.45}",
       ".sp-path{font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all}",
       ".sp-docrow{display:grid;grid-template-columns:76px 1fr auto;gap:8px;align-items:center;padding:3px 0;border-bottom:1px dashed var(--dsw-alias-border-l2)}",
       ".sp-docrow:last-child{border-bottom:0}",
@@ -324,6 +331,10 @@ window.__ModuleLoader__.load({
     const KNIFE_COLOR = { small: "#6F9FE8", merge: "#9B7BE8", official: "#E0A35E", plugin: "#6FBFA8" };
     const KNIFE_LABEL = {
       small: "spine.knifeSmall", merge: "spine.knifeMerge", official: "spine.knifeOfficial", plugin: "spine.knifePlugin",
+    };
+    /** 时间线徽标只有 70px 宽，用短名；完整名放在悬停提示里。 */
+    const KNIFE_SHORT = {
+      small: "spine.knifeSmall", merge: "spine.knifeMerge", official: "spine.knifeShortOfficial", plugin: "spine.knifeShortPlugin",
     };
     const EMPTY_KINDS = { small: 0, merge: 0, plugin: 0, official: 0 };
     const SEP = String.fromCharCode(92);
@@ -458,9 +469,15 @@ window.__ModuleLoader__.load({
     }
 
     function Kpi(props) {
+      const value = String(props.value ?? "");
+      // 数字用 19px 好看，纯文字/日期（刀法名、日期）降一档，免得撑出卡片换行。
+      const long = value.length > 7;
+      const style = {};
+      if (props.color) style.color = props.color;
+      if (long) style.fontSize = "15px";
       return h("div", { className: "sp-kpi" },
         h("div", { className: "sp-kpi-label" }, props.label),
-        h("div", { className: "sp-kpi-value", style: props.color ? { color: props.color } : undefined }, props.value),
+        h("div", { className: "sp-kpi-value", style }, value),
         props.hint ? h("div", { className: "sp-kpi-hint" }, props.hint) : null);
     }
 
@@ -493,11 +510,12 @@ window.__ModuleLoader__.load({
 
     function KnifeBadge(props) {
       const kind = props.kind;
+      const full = props.t(KNIFE_LABEL[kind] || "spine.knifePlugin");
       return h("span", {
         className: "sp-badge",
         style: { color: KNIFE_COLOR[kind] || "inherit", borderColor: KNIFE_COLOR[kind] || "currentColor" },
-        title: props.title || undefined,
-      }, props.t(KNIFE_LABEL[kind] || "spine.knifePlugin"));
+        title: props.title || full,
+      }, props.t(KNIFE_SHORT[kind] || KNIFE_LABEL[kind] || "spine.knifePlugin"));
     }
 
     function CutRow(props) {
@@ -512,7 +530,7 @@ window.__ModuleLoader__.load({
           h(KnifeBadge, { kind, t }),
           h("span", { className: "sp-dim sp-mono" }, range),
           h("span", { className: "sp-num sp-mono" }, fmtTokens(cut.tokens)),
-          h("span", { className: "sp-dim" }, cut.model || cut.provider || "—"),
+          h("span", { className: "sp-dim", title: cut.model || cut.provider || "" }, cut.model || cut.provider || "—"),
           h("span", { className: "sp-dim sp-num" }, fmtClock(cut.time)),
           h("span", { className: "sp-num sp-dim" }, files.length ? String(files.length) : "—")),
         h("div", { className: "sp-detail" },
@@ -636,7 +654,7 @@ window.__ModuleLoader__.load({
           h(Kpi, { key: "saved", label: t("spine.saved"), value: fmtTokens(totalSaved), hint: t("spine.savedHint"), color: "#6F9FE8" }),
           h(Kpi, { key: "count", label: t("spine.count"), value: String(totalCuts), hint: t("spine.average") + " " + fmtTokens(totalCuts ? Math.round(totalSaved / totalCuts) : 0) }),
           h(Kpi, { key: "sessions", label: t("spine.sessions"), value: String(num(global.sessions)), hint: t("spine.sessionsHint") }),
-          h(Kpi, { key: "top", label: t("spine.topKnife"), value: topKnife.kind ? t(KNIFE_LABEL[topKnife.kind]) : "—", hint: topKnife.kind ? fmtTokens(topKnife.saved) + " · " + shareText(topKnife.saved, totalSaved) : t("spine.none") }),
+          h(Kpi, { key: "top", label: t("spine.topKnife"), value: topKnife.kind ? t(KNIFE_SHORT[topKnife.kind]) : "—", hint: topKnife.kind ? fmtTokens(topKnife.saved) + " · " + shareText(topKnife.saved, totalSaved) : t("spine.none") }),
           h(Kpi, { key: "attempts", label: t("spine.attempts"), value: String(num(attempts.cut)), hint: t("spine.skipped") + " " + String(num(attempts.cutSkip)) + " · " + t("spine.failed") + " " + String(num(attempts.failed)) }),
           h(Kpi, { key: "since", label: t("spine.since"), value: global.since ? fmtDate(global.since) : "—", hint: t("spine.generated") + " " + fmtClock(global.generatedAt) }),
         ]
@@ -649,9 +667,7 @@ window.__ModuleLoader__.load({
             key: "biggest",
             label: t("spine.biggest"),
             value: biggestCut ? fmtTokens(biggestCut.tokens) : "—",
-            hint: biggestCut
-              ? t(KNIFE_LABEL[kindOfCut(biggestCut)]) + (biggestCut.start && biggestCut.end ? " " + biggestCut.start + "→" + biggestCut.end : "")
-              : t("spine.none"),
+            hint: biggestCut ? t(KNIFE_LABEL[kindOfCut(biggestCut)]) : t("spine.none"),
           }),
           h(Kpi, { key: "last", label: t("spine.last"), value: lastCut ? fmtClock(lastCut.time) : "—", hint: lastCut ? fmtTokens(lastCut.tokens) + " · " + t(KNIFE_LABEL[kindOfCut(lastCut)]) : t("spine.none") }),
         ];
@@ -678,11 +694,15 @@ window.__ModuleLoader__.load({
         all
           ? h("div", { className: "sp-foot" },
             h("span", null, t("spine.attempts") + " " + String(num(attempts.cut))),
+            h("span", { className: "sp-dot-sep" }, "·"),
             h("span", null, t("spine.skipped") + " " + String(num(attempts.cutSkip)) + " / " + String(num(attempts.mergeSkip))),
+            h("span", { className: "sp-dot-sep" }, "·"),
             h("span", null, t("spine.official") + " " + String(num(attempts.official))),
+            h("span", { className: "sp-dot-sep" }, "·"),
             h("span", null, t("spine.failed") + " " + String(num(attempts.failed))))
           : null);
-      const timelineCard = sessionCuts.length
+      // 全部会话没有逐刀记录，这里只画本会话的时间线；切到全部会话时先不显示，免得看错。
+      const timelineCard = !all && sessionCuts.length
         ? h("div", { className: "sp-card" },
           h("div", { className: "sp-card-title" }, t("spine.timeline"),
             h("span", { className: "sp-card-sub" }, fmtTokens(totalSaved) + " · " + String(sessionCuts.length) + " " + t("spine.cutsUnit"))),
