@@ -48,6 +48,21 @@ window.__ModuleLoader__.load({
       headroomTokens: ["官方大压缩预留", "默认 65536"],
       retainTokens: ["官方大压缩保留", "默认 8192"],
       compactionRetries: ["官方大压缩重试", "默认 0"],
+      minNetGain: ["净收益门槛", "切掉−卡片 不到这个数就不切"],
+      burstCuts: ["一次连切", "收尾时最多连切几刀"],
+      deepCutAbove: ["中刀启用线", "上下文超过它才试中刀；0 = 关闭"],
+      mergeMaxSpan: ["中刀窗口", "chunkMax × 它；默认 4 = 128k"],
+      mergeBreakEven: ["中刀回本倍数", "一次性重算 / 净赚 超过它就不切"],
+      mergeCooldownMs: ["中刀冷却 ms", "两刀中刀之间的最小间隔"],
+      officialAbove: ["大刀启用线", "超过它且没有可切段时请官方压缩；0 = 关"],
+      officialCooldownMs: ["大刀冷却 ms", "两次大压缩的最小间隔"],
+      paybackTurns: ["小刀回本轮数", "重算超过 净赚×它 就不切；0 = 关"],
+      spanBandRatio: ["动态刀长比例", "单刀上限 = 上下文 × 它；0 = 关"],
+      keepRounds: ["保留原文轮数", "最近几轮留原文"],
+      keepRoundTokens: ["收尾停止线", "降到这个 token 就不切"],
+      bigGate: ["绝对停切线", "超过即不再小切"],
+      chunkMax: ["一刀上限", "小刀一次最多切多少"],
+      chunkMin: ["一刀下限", "不够就不切"],
     };
 
     const zh = {
@@ -61,15 +76,34 @@ window.__ModuleLoader__.load({
       "spine.count": "切刀数",
       "spine.mine": "我方卡片",
       "spine.official": "官方卡片",
+      "spine.average": "平均",
+      "spine.biggest": "最大一刀",
+      "spine.last": "最近一刀",
+      "spine.none": "还没有",
+      "spine.tokensShort": "tokens",
+      "spine.cutsUnit": "刀",
+      "spine.composition": "压缩构成",
       "spine.timeline": "切点时间线",
       "spine.empty": "还没有切开过任何内容。上下文变大后，小刀会先在这里记一笔。",
       "spine.unavailable": "宿主没有提供压缩统计（插件未接管，或宿主版本较旧）。",
       "spine.kindMine": "小刀",
       "spine.kindOfficial": "官方",
       "spine.files": "备份文件",
+      "spine.filesShort": "文件",
       "spine.noFiles": "这一刀没有留备份文件。",
       "spine.copy": "复制",
       "spine.copyDir": "复制目录",
+      "spine.knobs": "刀把",
+      "spine.knobsHint": "改完点保存，立即生效",
+      "spine.readOnly": "当前配置只读",
+      "spine.dirLabel": "备份目录",
+      "spine.colKind": "类型",
+      "spine.colTokens": "切掉",
+      "spine.colSeq": "事件号",
+      "spine.colModel": "模型",
+      "spine.colTime": "时间",
+      "spine.colFiles": "文件",
+      discard: "放弃修改",
       basic: "常用",
       advanced: "高级设置",
       save: "保存",
@@ -92,15 +126,34 @@ window.__ModuleLoader__.load({
       "spine.count": "Cuts",
       "spine.mine": "Our cards",
       "spine.official": "Official cards",
+      "spine.average": "avg",
+      "spine.biggest": "Largest cut",
+      "spine.last": "Last cut",
+      "spine.none": "none yet",
+      "spine.tokensShort": "tokens",
+      "spine.cutsUnit": "cuts",
+      "spine.composition": "Composition",
       "spine.timeline": "Cut timeline",
       "spine.empty": "Nothing has been cut yet. Once the context grows, the first cut appears here.",
       "spine.unavailable": "The host does not serve compaction stats (plugin not active, or an older host).",
       "spine.kindMine": "knife",
       "spine.kindOfficial": "official",
       "spine.files": "Backup files",
+      "spine.filesShort": "files",
       "spine.noFiles": "This cut kept no backup file.",
       "spine.copy": "Copy",
       "spine.copyDir": "Copy folder",
+      "spine.knobs": "Knobs",
+      "spine.knobsHint": "Save to apply immediately",
+      "spine.readOnly": "Configuration is read-only",
+      "spine.dirLabel": "Backup folder",
+      "spine.colKind": "kind",
+      "spine.colTokens": "cut",
+      "spine.colSeq": "seq",
+      "spine.colModel": "model",
+      "spine.colTime": "time",
+      "spine.colFiles": "files",
+      discard: "Discard",
       basic: "Common",
       advanced: "Advanced",
       save: "Save",
@@ -114,29 +167,54 @@ window.__ModuleLoader__.load({
     };
 
     const SPINE_KEY = "spine.cuts";
-    const CUT_COLORS = { spine: "#7CC0FF", official: "#E7A45C" };
+    const SPINE_CSS = [
+      ".sp-root{box-sizing:border-box;height:100%;overflow-y:auto;padding:12px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5}",
+      ".sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:8px;margin-bottom:10px}",
+      ".sp-kpi{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:8px 10px;min-width:0}",
+      ".sp-kpi-label{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+      ".sp-kpi-value{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px}",
+      ".sp-kpi-hint{font-size:10.5px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-secondary));margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+      ".sp-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;margin-bottom:10px}",
+      ".sp-card-title{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:8px}",
+      ".sp-card-sub{margin-left:auto;font-weight:400;font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
+      ".sp-bar{display:flex;gap:2px;height:20px;border-radius:6px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
+      ".sp-seg{height:100%;min-width:2px}",
+      ".sp-seg:hover{opacity:.72}",
+      ".sp-legend{display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:8px}",
+      ".sp-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}",
+      ".sp-head{display:grid;grid-template-columns:20px 58px 1fr 74px 1fr 66px 46px;gap:8px;padding:0 6px 4px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
+      ".sp-row{display:grid;grid-template-columns:20px 58px 1fr 74px 1fr 66px 46px;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;font-size:12px}",
+      ".sp-row:hover{background:var(--dsw-alias-interactive-bg-hover)}",
+      ".sp-badge{font-size:10.5px;line-height:17px;padding:0 6px;border-radius:999px;border:1px solid;text-align:center;white-space:nowrap}",
+      ".sp-mono{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-variant-numeric:tabular-nums}",
+      ".sp-num{text-align:right;font-variant-numeric:tabular-nums}",
+      ".sp-dim{color:var(--dsw-alias-label-secondary)}",
+      ".sp-details summary{list-style:none;cursor:pointer}",
+      ".sp-details summary::-webkit-details-marker{display:none}",
+      ".sp-detail{display:grid;gap:6px;padding:6px 8px 8px;border-top:1px dashed var(--dsw-alias-border-l2)}",
+      ".sp-preview{margin:0;font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-secondary);max-height:104px;overflow:hidden}",
+      ".sp-files{margin:0;padding:0;list-style:none;display:grid;gap:3px;max-height:132px;overflow:auto}",
+      ".sp-files li{display:flex;align-items:center;gap:8px}",
+      ".sp-btn{font:inherit;font-size:11px;padding:2px 9px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);cursor:pointer;white-space:nowrap}",
+      ".sp-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}",
+      ".sp-btn-primary{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);border-color:transparent}",
+      ".sp-btn:disabled{opacity:.45;cursor:not-allowed}",
+      ".sp-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 14px}",
+      ".sp-group{margin-bottom:12px}",
+      ".sp-group:last-child{margin-bottom:0}",
+      ".sp-group-title{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-bottom:6px}",
+      ".sp-group-title::after{content:'';flex:1;height:1px;background:var(--dsw-alias-border-l2)}",
+      ".sp-empty{color:var(--dsw-alias-label-secondary);text-align:center;padding:16px 0;font-size:12px}",
+      ".sp-foot{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:2px;flex-wrap:wrap}",
+      ".sp-path{font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all}",
+    ].join("\n");
+    const CUT_COLOR = { spine: "#6F9FE8", official: "#E0A35E" };
     const SEP = String.fromCharCode(92);
-    const S = {
-      wrap: { padding: "18px 20px 32px", maxWidth: 900, margin: "0 auto", fontFamily: "inherit" },
-      stats: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 },
-      stat: { flex: "1 1 0", minWidth: 132, border: "1px solid rgba(127,127,147,0.24)", borderRadius: 10, padding: "10px 12px", background: "rgba(127,127,147,0.06)" },
-      statLabel: { fontSize: 11, opacity: 0.6, letterSpacing: "0.01em" },
-      statValue: { fontSize: 20, fontWeight: 600, marginTop: 2, fontVariantNumeric: "tabular-nums" },
-      statHint: { fontSize: 11, opacity: 0.45, marginTop: 2 },
-      sectionTitle: { fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.55, margin: "4px 0 8px" },
-      hint: { opacity: 0.62, fontSize: 13, lineHeight: 1.7 },
-      cut: { border: "1px solid rgba(127,127,147,0.22)", borderRadius: 10, marginBottom: 8, background: "rgba(127,127,147,0.05)" },
-      cutHead: { display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer", listStyle: "none" },
-      badge: { fontSize: 11, padding: "1px 7px", borderRadius: 999, border: "1px solid", lineHeight: 1.7, whiteSpace: "nowrap" },
-      tokens: { fontSize: 13, fontWeight: 600, fontVariantNumeric: "tabular-nums" },
-      meta: { fontSize: 12, opacity: 0.55, whiteSpace: "nowrap" },
-      cutBody: { padding: "0 12px 12px", display: "grid", gap: 8 },
-      preview: { fontSize: 12, opacity: 0.75, lineHeight: 1.65, margin: 0, wordBreak: "break-word" },
-      fileRow: { display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" },
-      path: { fontSize: 11.5, opacity: 0.8, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", wordBreak: "break-all" },
-      button: { font: "inherit", fontSize: 11.5, padding: "2px 8px", borderRadius: 6, border: "1px solid rgba(127,127,147,0.35)", background: "transparent", color: "inherit", cursor: "pointer" },
-      footer: { marginTop: 18, display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between", borderTop: "1px solid rgba(127,127,147,0.18)", paddingTop: 12, flexWrap: "wrap" },
-    };
+    const KNOB_GROUPS = [
+      { id: "small", title: "小刀", keys: ["chunkMax", "chunkMin", "burstCuts", "paybackTurns", "spanBandRatio", "minNetGain"] },
+      { id: "mid", title: "中刀", keys: ["deepCutAbove", "mergeMaxSpan", "mergeBreakEven", "mergeCooldownMs"] },
+      { id: "big", title: "大刀", keys: ["officialAbove", "officialCooldownMs", "bigGate", "keepRounds", "keepRoundTokens"] },
+    ];
 
     function fmtTokens(value) {
       const n = Number(value) || 0;
@@ -159,60 +237,160 @@ window.__ModuleLoader__.load({
       } catch {}
     }
 
-    function Stat(props) {
-      return h("div", { style: S.stat },
-        h("div", { style: S.statLabel }, props.label),
-        h("div", { style: { ...S.statValue, color: props.color || "inherit" } }, props.value),
-        props.hint ? h("div", { style: S.statHint }, props.hint) : null);
+    /** 面板的全部统计都在这里算，纯函数，组件只负责画。 */
+    function summarizeCuts(cuts) {
+      const list = Array.isArray(cuts) ? cuts : [];
+      const sum = (arr) => arr.reduce((total, cut) => total + (Number(cut.tokens) || 0), 0);
+      const spine = list.filter((cut) => cut.kind === "spine");
+      const official = list.filter((cut) => cut.kind === "official");
+      const total = sum(list);
+      const biggest = list.reduce((best, cut) => ((Number(cut.tokens) || 0) > (Number(best && best.tokens) || 0) ? cut : best), null);
+      const files = list.reduce((count, cut) => count + (Array.isArray(cut.rawNames) ? cut.rawNames.length : 0), 0);
+      return {
+        count: list.length,
+        total,
+        spineCount: spine.length,
+        spineTokens: sum(spine),
+        officialCount: official.length,
+        officialTokens: sum(official),
+        average: list.length ? Math.round(total / list.length) : 0,
+        biggest,
+        files,
+        first: list.length ? list[0] : null,
+        last: list.length ? list[list.length - 1] : null,
+      };
+    }
+
+    /** 构成条：每一刀按 token 占比分一段，小刀至少 1.5% 好看见。 */
+    function barSegments(cuts) {
+      const list = (Array.isArray(cuts) ? cuts : []).filter((cut) => (Number(cut.tokens) || 0) > 0);
+      const total = list.reduce((sum, cut) => sum + (Number(cut.tokens) || 0), 0);
+      if (!total) return [];
+      return list.map((cut) => ({
+        cut,
+        width: Math.max(1.5, ((Number(cut.tokens) || 0) / total) * 100),
+        share: (Number(cut.tokens) || 0) / total,
+        color: CUT_COLOR[cut.kind] || "var(--dsw-alias-label-secondary)",
+      }));
+    }
+
+    function Kpi(props) {
+      return h("div", { className: "sp-kpi" },
+        h("div", { className: "sp-kpi-label" }, props.label),
+        h("div", { className: "sp-kpi-value", style: props.color ? { color: props.color } : undefined }, props.value),
+        props.hint ? h("div", { className: "sp-kpi-hint" }, props.hint) : null);
     }
 
     function CutRow(props) {
-      const { cut, t, dir } = props;
-      const color = CUT_COLORS[cut.kind] || "inherit";
+      const { cut, t, dir, index } = props;
+      const color = CUT_COLOR[cut.kind] || "inherit";
       const files = Array.isArray(cut.rawNames) ? cut.rawNames : [];
       const sep = String(dir || "").includes(SEP) ? SEP : "/";
-      const range = cut.start && cut.end ? "seq " + cut.start + " → " + cut.end : t("spine.noRange");
-      return h("details", { style: S.cut },
-        h("summary", { style: S.cutHead },
-          h("span", { style: { ...S.badge, color, borderColor: color } },
+      const range = cut.start && cut.end ? cut.start + "→" + cut.end : "—";
+      return h("details", { className: "sp-details" },
+        h("summary", { className: "sp-row" },
+          h("span", { className: "sp-dim sp-num" }, String(index)),
+          h("span", { className: "sp-badge", style: { color, borderColor: color } },
             cut.kind === "spine" ? t("spine.kindMine") : t("spine.kindOfficial")),
-          h("span", { style: S.tokens }, "−" + fmtTokens(cut.tokens)),
-          h("span", { style: S.meta }, range),
-          h("span", { style: { ...S.meta, marginLeft: "auto" } }, fmtClock(cut.time))),
-        h("div", { style: S.cutBody },
-          cut.preview ? h("p", { style: S.preview }, cut.preview) : null,
-          cut.provider || cut.model ? h("div", { style: S.meta }, [cut.provider, cut.model].filter(Boolean).join(" / ")) : null,
+          h("span", { className: "sp-mono sp-num", style: { textAlign: "left" } }, "−" + fmtTokens(cut.tokens)),
+          h("span", { className: "sp-dim sp-mono", style: { textAlign: "left" } }, range),
+          h("span", { className: "sp-dim", style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, cut.model || cut.provider || "—"),
+          h("span", { className: "sp-dim sp-mono" }, fmtClock(cut.time)),
+          h("span", { className: "sp-dim sp-num" }, files.length ? String(files.length) : "·")),
+        h("div", { className: "sp-detail" },
+          cut.preview ? h("p", { className: "sp-preview" }, cut.preview) : null,
           files.length
-            ? h("div", null,
-              h("div", { style: S.meta }, t("spine.files")),
-              files.map((name) => h("div", { key: name, style: S.fileRow },
-                h("code", { style: S.path }, name),
-                h("button", { style: S.button, onClick: () => copyText(dir ? dir + sep + name : name) }, t("spine.copy")))))
-            : h("p", { style: { ...S.meta, margin: 0 } }, t("spine.noFiles"))));
+            ? h("ul", { className: "sp-files" }, files.map((name) => h("li", { key: name },
+              h("code", { className: "sp-path", style: { flex: "1 1 auto" } }, name),
+              h("button", { className: "sp-btn", onClick: () => copyText(dir ? dir + sep + name : name) }, t("spine.copy")))))
+            : h("div", { className: "sp-dim" }, t("spine.noFiles"))));
     }
 
     function SpinePanel(props) {
       const t = props.t;
       const state = typeof props.useProjection === "function" ? props.useProjection(SPINE_KEY) : undefined;
-      if (!state) return h("div", { style: S.wrap }, h("p", { style: S.hint }, t("spine.unavailable")));
+      const [, setTick] = React.useState(0);
+      const bump = () => setTick((value) => value + 1);
+      const model = props.model;
+      const actions = props.actions || {};
+      if (!state) return h("div", { className: "sp-root" }, h("div", { className: "sp-empty" }, t("spine.unavailable")));
       const cuts = Array.isArray(state.cuts) ? state.cuts : [];
-      const rows = cuts.slice().reverse();
-      return h("div", { style: S.wrap },
-        h("div", { style: S.stats },
-          h(Stat, { label: t("spine.saved"), value: fmtTokens(state.saved), hint: t("spine.savedHint"), color: "#7CC0FF" }),
-          h(Stat, { label: t("spine.count"), value: String(cuts.length) }),
-          h(Stat, { label: t("spine.mine"), value: String(state.spine || 0) }),
-          h(Stat, { label: t("spine.official"), value: String(state.official || 0) })),
-        h("div", { style: S.sectionTitle }, t("spine.timeline")),
-        rows.length
-          ? rows.map((cut, index) => h(CutRow, { key: cut.id + "-" + index, cut, t, dir: state.shadowDir }))
-          : h("p", { style: S.hint }, t("spine.empty")),
+      const stats = summarizeCuts(cuts);
+      const segments = barSegments(cuts);
+      const rows = cuts.map((cut, index) => ({ cut, index: index + 1 })).reverse();
+      const shell = model && typeof model.shell === "function" ? model.shell() : {};
+      const knob = (name) => {
+        const label = LABELS[name] || [name, ""];
+        return h(SettingsValueField, {
+          key: name,
+          id: "spine-knob-" + name,
+          label: label[0],
+          hint: label[1],
+          numeric: true,
+          disabled: !shell.writable || shell.saving,
+          overriddenLabel: t("overridden"),
+          resetLabel: t("reset"),
+          invalidLabel: t("invalid"),
+          ...(model ? model.field(name) : {}),
+          onEdit: (text) => { actions.edit?.(name, text); bump(); },
+          onReset: () => { actions.resetField?.(name); bump(); },
+        });
+      };
+      return h("div", { className: "sp-root" },
+        h("div", { className: "sp-grid" },
+          h(Kpi, { label: t("spine.saved"), value: fmtTokens(stats.total), hint: t("spine.savedHint"), color: "#6F9FE8" }),
+          h(Kpi, { label: t("spine.count"), value: String(stats.count), hint: t("spine.average") + " " + fmtTokens(stats.average) }),
+          h(Kpi, { label: t("spine.mine"), value: String(stats.spineCount), hint: fmtTokens(stats.spineTokens) + " " + t("spine.tokensShort") }),
+          h(Kpi, { label: t("spine.official"), value: String(stats.officialCount), hint: fmtTokens(stats.officialTokens) + " " + t("spine.tokensShort") }),
+          h(Kpi, { label: t("spine.biggest"), value: stats.biggest ? fmtTokens(stats.biggest.tokens) : "—", hint: stats.biggest ? "seq " + stats.biggest.start + "→" + stats.biggest.end : t("spine.none") }),
+          h(Kpi, { label: t("spine.last"), value: stats.last ? fmtClock(stats.last.time) : "—", hint: stats.last ? fmtTokens(stats.last.tokens) : t("spine.none") })),
+        h("div", { className: "sp-card" },
+          h("div", { className: "sp-card-title" }, t("spine.composition"),
+            h("span", { className: "sp-card-sub" }, t("spine.files") + " " + String(stats.files))),
+          segments.length
+            ? h("div", { className: "sp-bar" }, segments.map((segment, index) => h("div", {
+              key: segment.cut.id + "-" + index,
+              className: "sp-seg",
+              style: { width: segment.width + "%", background: segment.color },
+              title: (segment.cut.kind === "spine" ? t("spine.kindMine") : t("spine.kindOfficial")) + " −" + fmtTokens(segment.cut.tokens) + " (seq " + segment.cut.start + "→" + segment.cut.end + ")",
+            })))
+            : h("div", { className: "sp-empty" }, t("spine.empty")),
+          segments.length
+            ? h("div", { className: "sp-legend" },
+              h("span", null, h("span", { className: "sp-dot", style: { background: CUT_COLOR.spine } }), t("spine.kindMine"), " ", fmtTokens(stats.spineTokens)),
+              h("span", null, h("span", { className: "sp-dot", style: { background: CUT_COLOR.official } }), t("spine.kindOfficial"), " ", fmtTokens(stats.officialTokens)))
+            : null),
+        h("div", { className: "sp-card" },
+          h("div", { className: "sp-card-title" }, t("spine.timeline"),
+            h("span", { className: "sp-card-sub" }, fmtTokens(stats.total) + " · " + String(stats.count) + " " + t("spine.cutsUnit"))),
+          rows.length
+            ? h("div", null,
+              h("div", { className: "sp-head" },
+                h("span", { className: "sp-num" }, "#"),
+                h("span", null, t("spine.colKind")),
+                h("span", null, t("spine.colTokens")),
+                h("span", null, t("spine.colSeq")),
+                h("span", null, t("spine.colModel")),
+                h("span", null, t("spine.colTime")),
+                h("span", { className: "sp-num" }, t("spine.colFiles"))),
+              rows.slice(0, 60).map((row) => h(CutRow, { key: row.cut.id + "-" + row.index, cut: row.cut, index: row.index, t, dir: state.shadowDir })))
+            : h("div", { className: "sp-empty" }, t("spine.empty"))),
+        h("div", { className: "sp-card" },
+          h("div", { className: "sp-card-title" }, t("spine.knobs"),
+            h("span", { className: "sp-card-sub" }, shell.writable ? t("spine.knobsHint") : t("spine.readOnly")),
+            h("button", { className: "sp-btn sp-btn-primary", disabled: !shell.writable || shell.saving, onClick: () => { actions.save?.(); bump(); } }, shell.saving ? t("saving") : t("save")),
+            h("button", { className: "sp-btn", disabled: !shell.writable || shell.saving, onClick: () => { actions.discard?.(); bump(); } }, t("discard"))),
+          KNOB_GROUPS.map((group) => h("div", { key: group.id, className: "sp-group" },
+            h("div", { className: "sp-group-title" }, group.title),
+            h("div", { className: "sp-fields" }, group.keys.map(knob))))),
         state.shadowDir
-          ? h("div", { style: S.footer },
-            h("code", { style: S.path }, state.shadowDir),
-            h("button", { style: S.button, onClick: () => copyText(state.shadowDir) }, t("spine.copyDir")))
+          ? h("div", { className: "sp-foot" },
+            h("span", null, t("spine.dirLabel")),
+            h("code", { className: "sp-path" }, state.shadowDir),
+            h("button", { className: "sp-btn", onClick: () => copyText(state.shadowDir) }, t("spine.copyDir")))
           : null);
     }
+
 
     function SettingsPage(props) {
       const { t } = props;
@@ -289,8 +467,20 @@ window.__ModuleLoader__.load({
           },
           SettingsPage,
         ))), "live-compact: settings page");
-        // 会话里的「压缩」页：读宿主投影，实时看切过多少、切在哪、备份文件在哪。
-        // 单独一个 effect：面板挂不上（老宿主没有 conversation.view）也不影响设置页。
+        // 会话里的「压缩」页：读宿主投影出统计，配置沿用设置页那份表单模型（同一份 ledger，
+        // 在这里改就是改真配置）。单独一个 effect：面板挂不上不影响设置页。
+        if (typeof styles !== "undefined" && styles?.insert) styles.insert(SPINE_CSS);
+        else if (typeof document !== "undefined") {
+          const marker = "dsh-live-compact-x#spine-panel";
+          if (!document.querySelector("style[data-plugin-css=" + JSON.stringify(marker) + "]")) {
+            const styleEl = document.createElement("style");
+            styleEl.dataset.plugin = "dsh-live-compact-x";
+            styleEl.dataset.pluginCss = marker;
+            styleEl.textContent = SPINE_CSS;
+            document.head.appendChild(styleEl);
+          }
+        }
+        const panelActions = model.actions();
         ctx.effect(() => ctx.slots.inject("conversation.view", () => ctx.slots.register(
           {
             name: "conversation.view",
@@ -299,9 +489,11 @@ window.__ModuleLoader__.load({
             locale: "liveCompact",
             label: () => t("tab.spine"),
           },
-          (props) => h(SpinePanel, { ...props, t }),
+          (props) => h(SpinePanel, { ...props, t, model, actions: panelActions }),
         )), "live-compact: cuts panel");
       },
+      // 只是给本地测试用的出口；加载器只认 inject / apply。
+      __test: { summarizeCuts, barSegments, fmtTokens, fmtClock, SpinePanel, SPINE_CSS },
     };
   },
 });

@@ -1,11 +1,16 @@
-# 1.3.11-x.0
+# 1.3.12-x.0
 
-- **会话里的「压缩」面板**：在「上下文」和「编队」之间多一个页签（`conversation.view`，id `dsh-live-compact-x#cuts`，order 25），实时看这个会话被切了多少。
+- **会话里的「压缩」面板**：在「上下文」和「编队」之间多一个页签（`conversation.view`，id `dsh-live-compact-x#cuts`，order 25），实时看这个会话被切了多少，并且**就地调刀**。
+  - 版式对齐宿主设计语言：自绘 CSS（`styles.insert`）全用 `--dsw-alias-*` 主题变量，深/浅色自动跟随；卡片 10px 圆角、10.5-13px 字号、tabular-nums 数字。
+  - 六个 KPI：累计切掉 / 切刀数 / 我方卡片 / 官方卡片 / 最大一刀 / 最近一刀（各自带副标题）。
+  - **压缩构成条**：每一刀按 token 占比画一段，小刀蓝、官方橙，悬停显示 seq 范围与切掉量，下方图例给两边合计。
+  - **时间线表格**：# / 类型 / 切掉 / 事件号 / 模型 / 时间 / 文件数；点开每行看卡片预览与备份文件名（逐个可复制），底部是备份目录。
+  - **刀把（就地配置）**：小刀 6 项（chunkMax、chunkMin、burstCuts、paybackTurns、spanBandRatio、minNetGain）、中刀 4 项（deepCutAbove、mergeMaxSpan、mergeBreakEven、mergeCooldownMs）、大刀 5 项（officialAbove、officialCooldownMs、bigGate、keepRounds、keepRoundTokens），复用设置页那份表单模型（同一份 ledger），改完点保存立即生效。
   - 数据来自新加的**会话投影** `spine.cuts`：纯同步折叠 `compaction/summary` + 紧随其后的卡片事件，客户端 `useProjection` 直接读全量视图，不额外开 RPC、不读盘。
   - 面板内容：累计切掉多少 token（我方/官方分列）、切刀数、每刀的时间线（seq 范围、切掉多少、卡片预览、备份文件名、模型），点开每一刀可展开；备份目录和单个文件名都能一键复制。
   - 实测重放（会话 d608cb07，6112 条事件）：14 刀、累计 701,228 token、我方 5 张卡 / 官方 9 张，最老一刀 seq 481→3091（406,919 token）——和决策日志对得上。
   - 投影是可选的：宿主没有 `sessionProjections` 就跳过注册，注册失败只影响面板，压缩照旧。设置页与面板各自独立 effect，一个挂不上不连累另一个。
-  - 测试：新增 test/projection.test.mjs 26 条（折叠、去重、上限、预览剥离、schema 放行）。全套 161 条通过。
+  - 测试：新增 test/projection.test.mjs 26 条（折叠、去重、上限、预览剥离、schema 放行）、test/client-panel.test.mjs 36 条（假加载器跑真 bundle：数字格式、统计口径、构成条、面板渲染、保存按钮、`conversation.view` 注册、样式注入）。全套 198 条通过。
 
 # 1.3.10-x.0
 
