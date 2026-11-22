@@ -982,10 +982,24 @@ window.__ModuleLoader__.load({
           try { return [id, new SettingsFormModel(ctx.configForms.get(id), fields)]; } catch { return [id, null]; }
         }));
         ctx.effect(() => () => {
+          for (const store of stores.values()) { try { store?.dispose?.(); } catch {} }
           for (const form of forms.values()) { try { form?.dispose?.(); } catch {} }
         }, "live-compact: form subscriptions");
         let activeId = NS;
         const activeModel = () => forms.get(activeId) || forms.get(NS) || null;
+        // 每个模型的快照订阅只建一次：whileServed 反复进出不能漏订阅。
+        const stores = new Map();
+        const storeFor = (form) => {
+          if (!form) return null;
+          if (!stores.has(form)) {
+            stores.set(form, form.bind(() => ({
+              ...form.shell(),
+              takeoverPresets: form.field("takeoverPresets"),
+              ...Object.fromEntries(KEYS.map((name) => [name, form.field(name)])),
+            })));
+          }
+          return stores.get(form);
+        };
         // 面板可能是先渲染、配置后服务：门面每次转发给当前模型，别把旧模型焊死。
         const model = {
           shell() { try { return activeModel()?.shell() || {}; } catch { return {}; } },
@@ -1013,11 +1027,7 @@ window.__ModuleLoader__.load({
           const hit = served && typeof served.has === "function" ? NS_CANDIDATES.find((id) => served.has(id)) : undefined;
           if (hit) activeId = hit;
           const form = activeModel();
-          const store = form ? form.bind(() => ({
-            ...form.shell(),
-            takeoverPresets: form.field("takeoverPresets"),
-            ...Object.fromEntries(KEYS.map((name) => [name, form.field(name)])),
-          })) : null;
+          const store = storeFor(form);
           const off = ctx.slots.inject("plugins.row.config", () => ctx.slots.register(
             {
               name: "plugins.row.config",
