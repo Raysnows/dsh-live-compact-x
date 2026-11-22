@@ -159,7 +159,7 @@ ok(!text.includes("SettingsValueField"), "面板不渲染宿主原语组件（�
 // shell() 抛错时退化成只读，不该把整块面板打空
 const throwing = { shell() { throw new Error("boom"); } };
 const errTree = T.SpinePanel({ t: (key) => key, useProjection: () => fakeState, model: throwing, actions });
-ok(!texts(errTree).includes("spine.error") && texts(errTree).includes("spine.knobs"), "shell 抛错时降级成只读，不白屏");
+ok(!texts(errTree).includes("spine.error") && texts(errTree).includes("spine.cutPoint"), "shell 抛错时降级成只读，不白屏");
 let errSave = null;
 walk(errTree, (entry) => { const n = entry.node; if (n && n.props?.className === "sp-btn sp-btn-primary") errSave = n; });
 ok(errSave && errSave.props.disabled === true, "降级后保存按钮是禁用的");
@@ -196,7 +196,12 @@ const sections = [];
 walk(tree, (entry) => {
   const n = entry.node;
   if (!n) return;
-  if (n.type === "details" && n.props?.className === "sp-details sp-card") sections.push("debug");
+  if (n.type === "details" && n.props?.className === "sp-details sp-card") {
+    const head = (n.children || [])[0];
+    const label = [];
+    if (head) walk(head, (x) => { if (x.kind === "text") label.push(x.value); });
+    if (label.length) sections.push(label[0]);
+  }
   if (n.props?.className === "sp-card" && typeof n.type === "string") {
     const title = (n.children || []).find((c) => c && c.props && c.props.className === "sp-card-title");
     const label = [];
@@ -205,10 +210,11 @@ walk(tree, (entry) => {
   }
 });
 const uniqueSections = sections.filter((s, i) => sections.indexOf(s) === i);
-ok(uniqueSections[uniqueSections.length - 2] === "spine.knobs", "刀把在文档卡之后：" + uniqueSections.join("|"));
-ok(uniqueSections[uniqueSections.length - 1] === "debug", "调试台在最后且收起");
+ok(uniqueSections[uniqueSections.length - 2] === "spine.cutPoint", "刀把（切点）在文档卡之后：" + uniqueSections.join("|"));
+ok(uniqueSections[uniqueSections.length - 1] === "spine.debug", "调试台在最后且收起：" + uniqueSections.join("|"));
+ok(uniqueSections.filter((sec) => sec === "spine.cutPoint").length === 1, "切点卡只出现一次");
 const knobOrder = T.KNOB_GROUPS.map((g) => g.id).join(",");
-ok(knobOrder === "small,mid,big", "中刀排在小刀之后、大刀之前（" + knobOrder + "）");
+ok(knobOrder === "small,big,mid", "中刀排到最后（" + knobOrder + "）");
 ok(T.KNOB_GROUPS.find((g) => g.id === "mid").experimental === true, "中刀标了实验性");
 ok(T.KNOB_GROUPS.find((g) => g.id === "mid").enable === "deepCutAbove", "中刀有独立开关（deepCutAbove）");
 
@@ -257,6 +263,52 @@ const sessionTree = T.renderPanel({ t: (key) => key, model, actions }, fakeState
 ok(!texts(sessionTree).includes("spine.sessionsHint"), "本会话视图不显示跨会话 KPI");
 ok(texts(sessionTree).includes("80.0k"), "本会话视图显示中刀 80.0k");
 
+console.log("9b. 切点卡：默认收起、有默认档/自定义档");
+{
+  let cutCard = null;
+  walk(tree, (entry) => {
+    const n = entry.node;
+    if (n && n.type === "details" && n.props?.className === "sp-details sp-card") {
+      const head = (n.children || [])[0];
+      const label = [];
+      if (head) walk(head, (x) => { if (x.kind === "text") label.push(x.value); });
+      if (label[0] === "spine.cutPoint") cutCard = n;
+    }
+  });
+  ok(Boolean(cutCard), "没有 open 属性的 details：默认收起");
+  ok(cutCard && !("open" in cutCard.props), "切点卡默认不展开");
+  const buttons = [];
+  if (cutCard) walk(cutCard, (entry) => {
+    const n = entry.node;
+    if (n && n.type === "button") {
+      const label = [];
+      walk(n, (x) => { if (x.kind === "text") label.push(x.value); });
+      buttons.push({ label: label.join(""), node: n });
+    }
+  });
+  const defBtn = buttons.find((b) => b.label === "spine.presetDefault");
+  const cusBtn = buttons.find((b) => b.label === "spine.presetCustom");
+  ok(Boolean(defBtn && cusBtn), "有默认档和自定义档两个按钮");
+  // 默认档：把 deepseek 的默认值写进每个旋钮
+  const model3 = new SettingsFormModel({}, []);
+  const stateWithDefaults = { ...fakeState, defaults: { chunkMax: 32000, chunkMin: 1000, burstCuts: 3, paybackTurns: 0, spanBandRatio: 0, minNetGain: 3000, deepCutAbove: 0, mergeMaxSpan: 4, mergeBreakEven: 2, mergeCooldownMs: 300000, officialAbove: 0, officialCooldownMs: 1200000, bigGate: 650000, keepRounds: 3, keepRoundTokens: 32000 } };
+  hooks.length = 0;
+  const tree4 = T.renderPanel({ t: (key) => key, model: model3, actions: model3.actions() }, stateWithDefaults, "session", () => {}, () => {});
+  let def = null;
+  walk(tree4, (entry) => {
+    const n = entry.node;
+    if (n && n.type === "button") {
+      const label = [];
+      walk(n, (x) => { if (x.kind === "text") label.push(x.value); });
+      if (label.join("") === "spine.presetDefault") def = n;
+    }
+  });
+  def?.props?.onClick?.();
+  ok(model3.edits.some(([name, text]) => name === "chunkMax" && text === "32000"), "默认档把 chunkMax 写回 32000");
+  ok(model3.edits.some(([name, text]) => name === "deepCutAbove" && text === "0"), "默认档关掉中刀");
+  ok(model3.edits.length === 15, "默认档写满 15 个旋钮（" + model3.edits.length + "）");
+}
+
 console.log("10. 计数不受时间线长度影响");
 {
   // 时间线只留最近几刀，但累计计数是投影给的：视图要按计数算，不能拿时间线长度充数。
@@ -286,7 +338,7 @@ const ctx = {
     register: (options, component) => { registrations.push({ options, component }); return () => {}; },
   },
   locale: { bind: () => (key) => key, register: () => () => {} },
-  configForms: { get: () => ({}), whileServed: (names, fn) => fn() },
+  configForms: { get: () => ({}), whileServed: (names, fn) => fn(new Set(names)) },
   effect: (fn) => { const dispose = fn(); effects.push("effect"); return dispose; },
 };
 plugin.apply(ctx);

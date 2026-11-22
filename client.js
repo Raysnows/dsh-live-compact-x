@@ -6,7 +6,10 @@ window.__ModuleLoader__.load({
     const { SettingsFormModel, settingsNumberField, SettingsForm, SettingsValueField } = require("@deepseek-ai/dsh-client-ui-primitives");
     const h = React.createElement;
 
-    const NS = "compaction-spine";
+    // 宿主设置命名空间 = Loader 条目 id，也就是 cordis.patch.yml 里的 compaction-spine-x。
+    // 老安装（上游 / 早期 fork）可能叫 compaction-spine，两个都试，谁被服务用谁。
+    const NS_CANDIDATES = ["compaction-spine-x", "compaction-spine"];
+    const NS = NS_CANDIDATES[0];
     const GROUPS = [
       { id: "basic", keys: ["minTokens", "pointerTokens", "keepRounds"] },
       {
@@ -96,7 +99,11 @@ window.__ModuleLoader__.load({
       "spine.copy": "复制",
       "spine.copyDir": "复制目录",
       "spine.knobs": "刀把",
-      "spine.knobsHint": "改完点保存，立即生效",
+      "spine.cutPoint": "切点",
+      "spine.presetDefault": "默认档",
+      "spine.presetCustom": "自定义档",
+      "spine.presetDefaultOn": "现在是默认档，点开可改",
+      "spine.knobsHint": "点开调刀把，改完点保存才生效",
       "spine.readOnly": "当前配置只读",
       "spine.dirLabel": "备份目录",
       "spine.colKind": "类型",
@@ -196,7 +203,11 @@ window.__ModuleLoader__.load({
       "spine.copy": "Copy",
       "spine.copyDir": "Copy folder",
       "spine.knobs": "Knobs",
-      "spine.knobsHint": "Save to apply immediately",
+      "spine.cutPoint": "Cut points",
+      "spine.presetDefault": "Defaults",
+      "spine.presetCustom": "Custom",
+      "spine.presetDefaultOn": "On defaults — expand to edit",
+      "spine.knobsHint": "Expand to tune, then save",
       "spine.readOnly": "Configuration is read-only",
       "spine.dirLabel": "Backup folder",
       "spine.colKind": "kind",
@@ -336,6 +347,7 @@ window.__ModuleLoader__.load({
       ".sp-doclabel{font-size:11px;color:var(--dsw-alias-label-secondary)}",
       ".sp-doclink{color:var(--dsw-alias-state-business-primary);text-decoration:none}",
       ".sp-detail-row{display:grid;grid-template-columns:88px 1fr auto;gap:8px;align-items:center;font-size:11.5px}",
+      ".sp-preset{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px}",
       ".sp-note{margin-top:8px;padding-top:7px;border-top:1px dashed var(--dsw-alias-border-l2);font-size:10.5px;line-height:1.6;color:var(--dsw-alias-label-secondary)}",
     ].join("\n");
     // 五类刀法：小刀 / 中刀 / 大刀 都是本插件动的手（大刀借用官方摘要），
@@ -367,6 +379,13 @@ window.__ModuleLoader__.load({
         keys: ["chunkMax", "chunkMin", "burstCuts", "paybackTurns", "spanBandRatio", "minNetGain"],
       },
       {
+        id: "big",
+        title: "spine.knifeBig",
+        hint: "spine.groupBigHint",
+        keys: ["officialAbove", "officialCooldownMs", "bigGate", "keepRounds", "keepRoundTokens"],
+      },
+      // 实验性功能放最后：默认收起也不抢眼，开开关才生效。
+      {
         id: "mid",
         title: "spine.knifeMerge",
         hint: "spine.groupMidHint",
@@ -374,12 +393,6 @@ window.__ModuleLoader__.load({
         enable: "deepCutAbove",
         on: MID_ON,
         keys: ["mergeMaxSpan", "mergeBreakEven", "mergeCooldownMs", "deepCutAbove"],
-      },
-      {
-        id: "big",
-        title: "spine.knifeOfficial",
-        hint: "spine.groupBigHint",
-        keys: ["officialAbove", "officialCooldownMs", "bigGate", "keepRounds", "keepRoundTokens"],
       },
     ];
 
@@ -749,8 +762,10 @@ window.__ModuleLoader__.load({
         const field = model && typeof model.field === "function"
           ? (() => { try { return model.field(name) || {}; } catch { return {}; } })()
           : {};
+        // 表单里的值优先（改到一半的草稿也看得见）；没服务配置时退回投影里的生效值。
+        const staged = field && field.value !== undefined && field.value !== null ? String(field.value) : "";
         const resolved = Number(settings[name]);
-        const value = Number.isFinite(resolved) ? resolved : field.value;
+        const value = staged !== "" ? staged : (Number.isFinite(resolved) ? resolved : "");
         return h(KnobInput, {
           key: name,
           t,
@@ -763,8 +778,39 @@ window.__ModuleLoader__.load({
           onReset: () => { actions.resetField?.(name); bump(); },
         });
       };
-      const knobsCard = h("div", { className: "sp-card" },
-        h("div", { className: "sp-card-title" }, t("spine.knobs"),
+      const knobDefaults = (state && state.defaults) || {};
+      const presetDefault = () => {
+        for (const group of KNOB_GROUPS) {
+          for (const name of group.keys) {
+            const value = Number(knobDefaults[name]);
+            if (Number.isFinite(value)) actions.edit?.(name, String(value));
+          }
+        }
+        bump();
+      };
+      const presetCustom = () => {
+        // 「自定义」不写任何东西：草稿里现在填的就是自定义档，点它只是回到未保存状态。
+        actions.discard?.();
+        bump();
+      };
+      const isDefault = KNOB_GROUPS.every((group) => group.keys.every((name) => {
+        const want = Number(knobDefaults[name]);
+        return !Number.isFinite(want) || Math.abs(num(settings[name]) - want) < 1e-9;
+      }));
+      const knobsCard = h("details", { className: "sp-details sp-card" },
+        h("summary", { className: "sp-card-title" }, t("spine.cutPoint"),
+          h("span", { className: "sp-card-sub" }, isDefault ? t("spine.presetDefaultOn") : t("spine.knobsHint"))),
+        h("div", { className: "sp-preset" },
+          h("button", {
+            className: "sp-btn" + (isDefault ? " sp-btn-primary" : ""),
+            disabled: !shell.writable || shell.saving,
+            onClick: presetDefault,
+          }, t("spine.presetDefault")),
+          h("button", {
+            className: "sp-btn",
+            disabled: !shell.writable || shell.saving,
+            onClick: presetCustom,
+          }, t("spine.presetCustom")),
           h("span", { className: "sp-card-sub" }, shell.writable ? t("spine.knobsHint") : t("spine.readOnly")),
           h("button", {
             className: "sp-btn sp-btn-primary",
@@ -931,22 +977,61 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         const t = ctx.locale.bind("liveCompact");
         ctx.effect(() => ctx.locale.register("liveCompact", { zh, en }), "live-compact: settings dictionary");
-        const model = new SettingsFormModel(ctx.configForms.get(NS), [PRESET_FIELD, ...KEYS.map(settingsNumberField)]);
-        const store = model.bind(() => ({
-          ...model.shell(),
-          takeoverPresets: model.field("takeoverPresets"),
-          ...Object.fromEntries(KEYS.map((name) => [name, model.field(name)])),
+        const fields = [PRESET_FIELD, ...KEYS.map(settingsNumberField)];
+        const forms = new Map(NS_CANDIDATES.map((id) => {
+          try { return [id, new SettingsFormModel(ctx.configForms.get(id), fields)]; } catch { return [id, null]; }
         }));
-        ctx.effect(() => () => model.dispose(), "live-compact: form subscription");
-        ctx.effect(() => ctx.configForms.whileServed([NS], () => ctx.slots.inject("plugins.row.config", () => ctx.slots.register(
-          {
-            name: "plugins.row.config",
-            key: "dsh-live-compact-x#compaction-spine-x",
-            locale: "liveCompact",
-            inject: () => ({ hooks: { liveCompact: store }, ...model.actions() }),
+        ctx.effect(() => () => {
+          for (const form of forms.values()) { try { form?.dispose?.(); } catch {} }
+        }, "live-compact: form subscriptions");
+        let activeId = NS;
+        const activeModel = () => forms.get(activeId) || forms.get(NS) || null;
+        // 面板可能是先渲染、配置后服务：门面每次转发给当前模型，别把旧模型焊死。
+        const model = {
+          shell() { try { return activeModel()?.shell() || {}; } catch { return {}; } },
+          field(name) { try { return activeModel()?.field(name) || {}; } catch { return {}; } },
+          actions() { try { return activeModel()?.actions() || {}; } catch { return {}; } },
+          bind(selector) {
+            const form = activeModel();
+            if (!form) return () => ({ writable: false, saving: false });
+            const bound = form.bind(selector);
+            return {
+              subscribe: (fn) => bound.subscribe(fn),
+              getSnapshot: () => {
+                const snapshot = bound.getSnapshot();
+                return {
+                  ...snapshot,
+                  takeoverPresets: form.field("takeoverPresets"),
+                  ...Object.fromEntries(KEYS.map((name) => [name, form.field(name)])),
+                };
+              },
+            };
           },
-          SettingsPage,
-        ))), "live-compact: settings page");
+          dispose() {},
+        };
+        ctx.effect(() => ctx.configForms.whileServed(NS_CANDIDATES, (served) => {
+          const hit = served && typeof served.has === "function" ? NS_CANDIDATES.find((id) => served.has(id)) : undefined;
+          if (hit) activeId = hit;
+          const form = activeModel();
+          const store = form ? form.bind(() => ({
+            ...form.shell(),
+            takeoverPresets: form.field("takeoverPresets"),
+            ...Object.fromEntries(KEYS.map((name) => [name, form.field(name)])),
+          })) : null;
+          const off = ctx.slots.inject("plugins.row.config", () => ctx.slots.register(
+            {
+              name: "plugins.row.config",
+              key: "dsh-live-compact-x#compaction-spine-x",
+              locale: "liveCompact",
+              inject: () => ({
+                hooks: store ? { liveCompact: store } : { liveCompact: { subscribe: () => () => {}, getSnapshot: () => ({ writable: false, saving: false }) } },
+                ...(form ? form.actions() : {}),
+              }),
+            },
+            SettingsPage,
+          ));
+          return () => { try { off?.(); } catch {} };
+        }), "live-compact: settings page");
         // 会话里的「压缩」页：读宿主投影出统计，配置沿用设置页那份表单模型（同一份 ledger，
         // 在这里改就是改真配置）。单独一个 effect：面板挂不上不影响设置页。
         if (typeof styles !== "undefined" && styles?.insert) styles.insert(SPINE_CSS);
@@ -960,7 +1045,12 @@ window.__ModuleLoader__.load({
             document.head.appendChild(styleEl);
           }
         }
-        const panelActions = model.actions();
+        const panelActions = {
+          edit: (name, text) => model.actions().edit?.(name, text),
+          resetField: (name) => model.actions().resetField?.(name),
+          save: () => model.actions().save?.(),
+          discard: () => model.actions().discard?.(),
+        };
         // 面板注册也包一层：面板挂不上绝不连累设置页。
         ctx.effect(() => {
           try {

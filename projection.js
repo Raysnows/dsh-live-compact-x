@@ -164,6 +164,7 @@ export function schemaFor(zod) {
     cuts: zod.array(cut),
     firstActivity: zod.number().optional(),
     settings: zod.record(zod.string(), zod.number()).optional(),
+    defaults: zod.record(zod.string(), zod.number()).optional(),
     docs: zod.object({
       readme: zod.string(), repo: zod.string(), issues: zod.string(),
       changelog: zod.string(), version: zod.string(),
@@ -189,7 +190,7 @@ const EMPTY_GLOBAL = () => ({
  * @param {{ zod?: any, shadowDir?: (sid: string) => string, settingsReader?: () => Record<string, number>, docs?: Record<string, string>, version?: string }} options
  */
 export function spineProjectionDefinition({
-  zod = null, shadowDir = () => "", settingsReader = null, globalStatsReader = null, docs = {}, version = "",
+  zod = null, shadowDir = () => "", settingsReader = null, globalStatsReader = null, defaults = null, docs = {}, version = "",
 } = {}) {
   const schema = schemaFor(zod);
   const docsValue = {
@@ -303,7 +304,14 @@ export function spineProjectionDefinition({
         const firstActivity = firstActivityOf(global, state.sid);
         const cuts = attributeCuts(state.cuts, firstActivity);
         const { kinds, savedBy } = countCuts(state, cuts);
-        const stamp = JSON.stringify([settings, global.generatedAt, global.sessions, global.knives, firstActivity, cuts.length]);
+        // 「默认档」要有默认值可填：把引擎的 DEFAULTS 一并下发，面板不猜。
+        const knobDefaults = {};
+        const source = defaults || {};
+        for (const key of KNOB_KEYS) {
+          const value = Number(source[key]);
+          knobDefaults[key] = Number.isFinite(value) ? value : 0;
+        }
+        const stamp = JSON.stringify([settings, knobDefaults, global.generatedAt, global.sessions, global.knives, firstActivity, cuts.length]);
         if (cachedView && cachedStamp === stamp) return cachedView;
         cachedStamp = stamp;
         cachedView = {
@@ -319,6 +327,7 @@ export function spineProjectionDefinition({
           cuts,
           firstActivity,
           settings,
+          defaults: knobDefaults,
           docs: docsValue,
         };
         return cachedView;

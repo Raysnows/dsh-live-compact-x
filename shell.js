@@ -12,7 +12,7 @@ import { installPresetGate } from "./gate.js";
 import { installPruneHook } from "./v2/prune-hook.js";
 import { spineProjectionDefinition } from "./projection.js";
 import { readGlobalStats } from "./stats.js";
-import { readSettings } from "./settings.js";
+import { DEFAULTS, readSettings } from "./settings.js";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -170,6 +170,8 @@ function installCutsProjection(ctx) {
       settingsReader: () => readSettings(latestConfig || {}),
       // 「全部会话」：直接汇总 shadow 根目录的决策日志，按 mtime 判重，1.5 秒缓存。
       globalStatsReader: () => readGlobalStats({ dir: shadowDirectory() }),
+      // 「默认档」按钮填的就是这份引擎默认值。
+      defaults: DEFAULTS,
       docs: {
         readme: here ? join(here, "README.md") : "",
         changelog: here ? join(here, "CHANGELOG.md") : "",
