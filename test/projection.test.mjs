@@ -211,5 +211,40 @@ console.log("17. 视图里带着每条会话的首次活动时间");
   ok(v2.firstActivity === 0 && v2.cuts[0].kind === "official", "没记录的会话仍算官方");
 }
 
+console.log("18. 升级容错：旧快照不被 schema 挡住");
+{
+  // 宿主那边的 zod 在 profile 里；本仓库自己没装，测不到就跳过。
+  const zod = await import("file:///C:/Users/HP/.dsh/profiles/desktop/node_modules/zod/index.js")
+    .then((m) => m.z ?? m.default?.z ?? m.default ?? m)
+    .catch(() => null);
+  const def18 = spineProjectionDefinition({ zod });
+  if (!zod) {
+    console.log("  skip  没装 zod，跳过");
+  } else {
+    // 1.3.13 那版：没有 global / settings / docs / kinds，kind 还是 "spine"
+    const oldView = {
+      version: 1, saved: 100, spine: 1, official: 0, sid: "s", shadowDir: "/d",
+      cuts: [{ id: "a", kind: "spine", start: 1, end: 2, tokens: 100, time: 1, provider: "", model: "", preview: "", rawNames: [] }],
+    };
+    let okOld = true;
+    try { def18.viewSchema.parse(oldView); } catch { okOld = false; }
+    ok(okOld, "1.3.13 的视图（无 global/settings/kinds，kind=spine）仍能过");
+    const oldState = { version: 1, saved: 1, spine: 1, official: 0, sid: "s", shadowDir: "/d", cuts: [], pending: {} };
+    let okOldState = true;
+    try { def18.stateSchema.parse(oldState); } catch { okOldState = false; }
+    ok(okOldState, "1.3.13 的状态（无 kinds/savedBy）仍能过");
+    const bigView = JSON.parse(JSON.stringify(def18.wire.view(def18.init({ id: "s" }, 0))));
+    bigView.cuts = [{ id: "z", kind: "big", start: 1, end: 2, tokens: 9, time: 1, provider: "", model: "", preview: "", rawNames: [] }];
+    bigView.kinds = { ...(bigView.kinds || {}), big: 1 };
+    let okBig = true;
+    try { def18.viewSchema.parse(bigView); } catch { okBig = false; }
+    ok(okBig, "新刀法 kind=big 不会被 enum 挡住");
+    const newView = def18.wire.view(def18.init({ id: "s" }, 0));
+    let okNew = true;
+    try { def18.viewSchema.parse(newView); } catch (error) { okNew = String(error && error.message).slice(0, 60); }
+    ok(okNew === true, "新版视图自己也能过：" + okNew);
+  }
+}
+
 console.log("\n通过 " + pass + " / 失败 " + fail);
 process.exit(fail ? 1 : 0);

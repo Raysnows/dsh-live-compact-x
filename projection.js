@@ -113,15 +113,13 @@ function looseSchema() {
 
 export function schemaFor(zod) {
   if (!zod?.object) return { state: looseSchema(), view: looseSchema() };
-  const counters = zod.object({
-    small: zod.number(), merge: zod.number(), plugin: zod.number(), official: zod.number(),
-  });
-  const viewCounters = zod.object({
-    small: zod.number(), merge: zod.number(), plugin: zod.number(), big: zod.number(), official: zod.number(),
-  });
+  // 计数一律用宽松字典：刀法分类以后还会扩，缺键/多键都不该算坏数据。
+  const counters = zod.record(zod.string(), zod.number());
+  const viewCounters = counters;
   const cut = zod.object({
     id: zod.string(),
-    kind: zod.enum(["small", "merge", "plugin", "official"]),
+    // 不用 enum：刀法分类升级时，旧快照和新快照都不该把历史会话挡住。
+    kind: zod.string(),
     start: zod.number(),
     end: zod.number(),
     tokens: zod.number(),
@@ -131,6 +129,7 @@ export function schemaFor(zod) {
     preview: zod.string(),
     rawNames: zod.array(zod.string()),
   });
+  // 老快照缺字段也算合法：升级时宁可少显示，也别把历史会话挡在门外。
   const state = zod.object({
     version: zod.number(),
     saved: zod.number(),
@@ -138,8 +137,8 @@ export function schemaFor(zod) {
     official: zod.number(),
     sid: zod.string(),
     shadowDir: zod.string(),
-    kinds: counters,
-    savedBy: counters,
+    kinds: counters.optional(),
+    savedBy: counters.optional(),
     cuts: zod.array(cut),
     pending: zod.record(zod.string(), zod.any()).optional(),
   });
@@ -148,29 +147,27 @@ export function schemaFor(zod) {
     generatedAt: zod.number(),
     since: zod.number(),
     sessions: zod.number(),
-    knives: zod.object({ small: knifeStat, merge: knifeStat, big: knifeStat }),
-    firstBySid: zod.record(zod.string(), zod.number()),
-    attempts: zod.object({
-      cut: zod.number(), cutSkip: zod.number(), mergeSkip: zod.number(), official: zod.number(), failed: zod.number(),
-    }),
+    knives: zod.record(zod.string(), knifeStat),
+    firstBySid: zod.record(zod.string(), zod.number()).optional(),
+    attempts: zod.record(zod.string(), zod.number()).optional(),
   });
   const view = zod.object({
-    global: globalShape,
+    global: globalShape.optional(),
     version: zod.number(),
     saved: zod.number(),
     spine: zod.number(),
     official: zod.number(),
     sid: zod.string(),
     shadowDir: zod.string(),
-    kinds: viewCounters,
-    savedBy: viewCounters,
+    kinds: viewCounters.optional(),
+    savedBy: viewCounters.optional(),
     cuts: zod.array(cut),
-    firstActivity: zod.number(),
-    settings: zod.record(zod.string(), zod.number()),
+    firstActivity: zod.number().optional(),
+    settings: zod.record(zod.string(), zod.number()).optional(),
     docs: zod.object({
       readme: zod.string(), repo: zod.string(), issues: zod.string(),
       changelog: zod.string(), version: zod.string(),
-    }),
+    }).optional(),
   });
   return { state, view };
 }

@@ -115,6 +115,11 @@ console.log("7. 会话名归一与「第一次碰它」的时间");
   ok(firstActivityOf(out, "a") === Date.parse("2026-01-02T03:00:00.000Z"), "查的时候不用带 session- 前缀");
   ok(firstActivityOf(out, "session-a") === firstActivityOf(out, "a"), "带不带前缀都一样");
   ok(firstActivityOf(out, "unknown") === 0 && firstActivityOf(null, "a") === 0, "查不到给 0");
+  ok(sidKey("--D-work--/session-abc") === "abc", "工作区前缀也剥掉");
+  ok(firstActivityOf(out, "workspace--/session-a") === Date.parse("2026-01-02T03:00:00.000Z"), "带工作区前缀也能对上同一条会话");
+  ok(firstActivityOf(out, "workspace--/session-zzz") === 0, "对不上的名字不乱认");
+  const padded = aggregateDecisions(rec({ sid: "session-abcdef123456", ts: "2026-01-02T03:00:00.000Z", phase: "engine" }));
+  ok(firstActivityOf(padded, "session-abcdef123456") > 0, "同一条会话换个前缀写法仍能对上");
 }
 
 console.log("8. 超大日志只读尾巴");

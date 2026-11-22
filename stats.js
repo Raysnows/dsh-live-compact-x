@@ -138,9 +138,14 @@ export function readGlobalStats({ dir, ttlMs = DEFAULT_TTL_MS, maxBytes = DEFAUL
   return cachedStats;
 }
 
-/** 会话名归一：日志里是 memory-... / session-<uuid>，投影里可能只有 <uuid>。 */
+/**
+ * 会话名归一：日志里是 session-<uuid>，投影里可能只有 <uuid>，
+ * 也可能带着工作区前缀（--D-work--/session-<uuid>）。只留最后一段并剥掉前缀。
+ */
 export function sidKey(sid) {
-  return String(sid || "").replace(/^session-/, "").replace(/^memory-/, "");
+  const raw = String(sid || "");
+  const tail = raw.split(/[\\/]/).pop() || raw;
+  return tail.replace(/^session-/, "").replace(/^memory-/, "");
 }
 
 /**
@@ -153,8 +158,12 @@ export function firstActivityOf(aggregate, sid) {
   const table = aggregate?.firstBySid || {};
   const key = sidKey(sid);
   if (!key) return 0;
+  if (Number.isFinite(Number(table[key]))) return Number(table[key]);
   for (const [raw, ts] of Object.entries(table)) {
-    if (sidKey(raw) === key) return Number(ts) || 0;
+    const other = sidKey(raw);
+    if (other === key) return Number(ts) || 0;
+    // 只容忍整段前缀/后缀差：太短的名字不参与模糊匹配，免得撞车。
+    if (key.length >= 8 && other.length >= 8 && (other.includes(key) || key.includes(other))) return Number(ts) || 0;
   }
   return 0;
 }
