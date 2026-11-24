@@ -121,6 +121,25 @@ console.log("6. recall 四条路径");
   ok(recall({ index, reader: reader2, fallback: fb, resolve, session, id: "nope" }).source === "missing-index", "索引没有 -> missing-index");
 }
 
+console.log("N. 全事件索引：user / assistant 也能按 seq 回读");
+{
+  const dir = mkdtempSync(join(tmpdir(), "spine-lr-"));
+  const file = join(dir, "session.v4.jsonl.zstd");
+  const lines = [
+    JSON.stringify({ type: "user/message", seq: 7, data: { message: { role: "user", content: [{ type: "text", text: "用户原话" }] } } }),
+    JSON.stringify({ type: "assistant/message", seq: 8, data: { message: { role: "assistant", content: [{ type: "reasoning", text: "内部思考" }, { type: "text", text: "助手结论" }] } } }),
+    JSON.stringify({ type: "tool/result", seq: 9, data: { message: { content: [{ type: "text", text: "工具输出" }] } } }),
+  ].join("\n");
+  writeFileSync(file, zstdCompressSync(Buffer.from(lines)));
+  const reader = new LogReader();
+  const e = reader.refresh(file);
+  ok(e.seqToFrame.size === 3, "三种事件都进索引：" + e.seqToFrame.size);
+  ok(reader.readBySeq(file, 7) === "用户原话", "user 按 seq 回读");
+  ok(reader.readBySeq(file, 8) === "助手结论", "assistant 只取正文不含 reasoning：" + JSON.stringify(reader.readBySeq(file, 8)));
+  ok(reader.readBySeq(file, 9) === "工具输出", "tool 照旧");
+  rmSync(dir, { recursive: true, force: true });
+}
+
 rmSync(work, { recursive: true, force: true });
 console.log("\n通过 " + pass + " / 失败 " + fail);
 if (fail) process.exitCode = 1;

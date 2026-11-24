@@ -35,6 +35,9 @@ paybackTurns: 0, // >0：一刀的一次性重算 > netGain × 这个轮数就�
 spanBandRatio: 0, // >0：单刀上限 = 上下文 × 比例，再夹进 chunkMin..chunkMax（0 = 关）
 
 strictHostContext: 0, // 1 = 退回旧行为，把宿主注入的上下文快照也当成用户墙（默认 0：它们不是用户的话）
+
+officialScript: 0, // 大刀怎么归纳：0 = 官方模型摘要（默认，会走 LLM），1 = 本地脚本卡片（零模型调用）
+
   cooldownMs: 0, // 0 = 只用 seq 一次性跳过
 });
 
@@ -71,6 +74,8 @@ paybackTurns: "SPINE_PAYBACK_TURNS",
 spanBandRatio: "SPINE_SPAN_BAND_RATIO",
 
 strictHostContext: "SPINE_STRICT_HOST_CONTEXT",
+
+officialScript: "SPINE_OFFICIAL_SCRIPT",
 });
 
 // volatile 字段的现值是 cosmokit 的取值对象，读之前先摊平。
@@ -242,6 +247,9 @@ export function configSchema(z, stockSchema) {
       .volatile(),
     strictHostContext: count(0)
       .description("0 = 宿主注入的上下文快照（时间/环境/技能目录）不算用户墙，小刀才切得动；1 = 退回旧行为。")
+      .volatile(),
+    officialScript: count(0).max(1)
+      .description("大刀（超过启用线时的整段归纳）用谁：0 = 官方模型摘要（默认，会调模型、有 LLM 成本）；1 = 本地脚本卡片（零模型调用，机械摘录，不调模型）。坏卡或空文本直接报错，不回退官方。")
       .volatile(),
   });
 }

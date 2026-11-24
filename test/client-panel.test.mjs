@@ -74,7 +74,7 @@ ok(T.fmtTokens(1500) === "1.5k" && T.fmtTokens(32000) === "32.0k", "千级一位
 ok(T.fmtTokens(150000) === "150k", "十万以上取整：" + T.fmtTokens(150000));
 ok(T.fmtTokens(2500000) === "2.50M", "百万级：" + T.fmtTokens(2500000));
 ok(T.fmtClock(0) === "—", "没有时间显示破折号");
-ok(/^\d{2}:\d{2}:\d{2}$/.test(T.fmtClock(Date.now())), "时间格式 HH:MM:SS");
+ok(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(T.fmtClock(Date.now())), "时间格式 YYYY-MM-DD HH:mm:ss：" + T.fmtClock(Date.now()));
 
 console.log("3. 刀法归类：老数据不许冒充小刀");
 ok(T.kindOfCut({ kind: "small" }) === "small", "小刀认小刀");
@@ -692,6 +692,195 @@ console.log("9g. 时间线只铺最近 10 刀，其余展开看");
   ok(!texts(treeFew).includes("spine.expandRest"), "不足 10 刀时不显示展开按钮");
 }
 
+console.log("9g1. 顶栏直接显示版本号（不用展开文档卡）");
+{
+  const versionNode = (tree) => {
+    let hit = null;
+    walk(tree, ({ kind, node }) => { if (kind === "node" && node.props?.className === "sp-version") hit = node; });
+    return hit;
+  };
+  const labelOf = (node) => { const out = []; walk(node, (x) => { if (x.kind === "text") out.push(x.value); }); return out.join(""); };
+
+  // 顶栏是面板最外层那行；版本必须挂在它里面，而不是藏进文档卡。
+  const topbarOf = (tree) => {
+    let hit = null;
+    walk(tree, ({ kind, node }) => { if (kind === "node" && node.props?.className === "sp-topbar") hit = node; });
+    return hit;
+  };
+  const badge = versionNode(tree);
+  ok(Boolean(badge), "顶栏上有版本徽标");
+  ok(labelOf(badge) === "v1.3.14-x.0", "显示成 v+版本号：" + labelOf(badge));
+  ok(badge.props["data-version"] === "1.3.14-x.0", "data-version 带原始版本号");
+  ok(String(badge.props.title).includes("spine.version") && String(badge.props.title).includes("1.3.14-x.0"), "悬停给「版本 + 号」");
+  // 它确实在顶栏里：顶栏节点里能 walk 到它
+  const inTopbar = (() => {
+    let found = false;
+    walk(topbarOf(tree), ({ kind, node }) => { if (kind === "node" && node.props?.className === "sp-version") found = true; });
+    return found;
+  })();
+  ok(inTopbar, "版本徽标在顶栏内部");
+  // 顶栏是一行普通 div，不是 details：不需要点开就能看见版本号。
+  ok(topbarOf(tree)?.type === "div", "顶栏是常驻的一行，不是可收起的 details");
+  // 文档卡默认收起：版本号不能只躺在里面（那正是这次要修的体验）。
+  let docsCard = null;
+  walk(tree, ({ kind, node }) => {
+    if (kind !== "node" || node.type !== "details") return;
+    const label = [];
+    walk(node, (x) => { if (x.kind === "text") label.push(x.value); });
+    if (label[0] === "spine.docs") docsCard = node;
+  });
+  ok(Boolean(docsCard) && !("open" in docsCard.props), "文档卡仍默认收起，版本号不靠它");
+
+  // 全部会话视图同样有
+  const allBadge = versionNode(allTree);
+  ok(Boolean(allBadge) && labelOf(allBadge) === "v1.3.14-x.0", "全部会话视图也显示版本");
+
+  // 版本串自带 v 时不重复写
+  const vTree = T.renderPanel({ t: (k) => k, model, actions }, { ...fakeState, docs: { ...fakeState.docs, version: "v2.0.1" } }, "session", () => {}, () => {});
+  ok(labelOf(versionNode(vTree)) === "v2.0.1", "版本串本身带 v 时不叠成 vv：" + labelOf(versionNode(vTree)));
+
+  // 没有版本时优雅降级：不画空徽标，也不留一个孤零零的 v
+  for (const [label, docs] of [
+    ["docs 为空对象", {}],
+    ["version 是空串", { ...fakeState.docs, version: "" }],
+    ["version 只有空白", { ...fakeState.docs, version: "   " }],
+    ["version 是 undefined", { ...fakeState.docs, version: undefined }],
+    ["整个 docs 缺失", undefined],
+  ]) {
+    const t2 = T.renderPanel({ t: (k) => k, model, actions }, { ...fakeState, docs }, "session", () => {}, () => {});
+    ok(versionNode(t2) === null, label + "：不渲染版本徽标（" + label + "）");
+    ok(!texts(t2).includes("顶栏 v"), label + "：没有空的 v 文案");
+  }
+  // state 完全没有（渲染兜底）时也不能因为版本崩掉
+  const bare = T.SpinePanel({ t: (k) => k, useProjection: () => undefined });
+  ok(versionNode(bare) === null, "没有投影时不画版本徽标，也不因为版本崩掉");
+  ok(texts(bare).includes("spine.unavailable"), "没有投影时仍是原来的提示（版本不影响兜底）");
+
+  // 样式：和顶栏其它小控件同一套边框/底色
+  ok(T.SPINE_CSS.includes(".sp-version{"), "版本徽标有样式");
+  ok(String(T.SPINE_CSS).includes(".sp-version{flex:none;font-size:11px"), "版本徽标字号与顶栏一致（11px）");
+  ok(String(T.SPINE_CSS).includes("border-radius:999px"), "版本徽标是胶囊形，与 scope 按钮区分开");
+}
+
+console.log("9g2. 大刀归纳器：官方模型 / 本地脚本两选一");
+{
+  const choiceButtons = (tree) => {
+    const out = [];
+    walk(tree, ({ kind, node }) => {
+      if (kind !== "node" || !node.props) return;
+      if (node.props["data-choice"] === "officialScript") out.push(node);
+    });
+    return out;
+  };
+  const labelOf = (node) => { const out = []; walk(node, (x) => { if (x.kind === "text") out.push(x.value); }); return out.join(""); };
+
+  const modelS = new SettingsFormModel({}, []);
+  const treeS = T.renderPanel({ t: (k) => k, model: modelS, actions: modelS.actions() }, fakeState, "session", () => {}, () => {});
+  const btns = choiceButtons(treeS);
+  ok(btns.length === 2, "大刀组给两个按钮（官方模型 / 本地脚本）：" + btns.length);
+  ok(labelOf(btns[0]) === "spine.scriptModel" && labelOf(btns[1]) === "spine.scriptLocal", "按钮文案是官方模型 / 本地脚本");
+  ok(btns.every((b) => b.type === "button"), "是按钮，不是滑块");
+  ok(!btns.some((b) => b.props.type === "range"), "不是滑块：官方模型/脚本不是连续量");
+
+  // 默认（officialScript 缺省 / 0）高亮官方模型
+  ok(String(btns[0].props.className).includes("sp-choice-on"), "默认高亮官方模型：" + btns[0].props.className);
+  ok(!String(btns[1].props.className).includes("sp-choice-on"), "默认不把本地脚本点亮");
+  ok(String(btns[0].props.title).includes("LLM 成本") || btns[0].props.title.includes("spine.scriptModelHint"), "官方模型按钮带 LLM 成本说明");
+  ok(String(btns[1].props.title).includes("spine.scriptLocalHint"), "本地脚本按钮带零模型调用说明");
+  ok(texts(treeS).includes("spine.scriptModelHint"), "选中项下面铺开说明");
+  ok(texts(treeS).includes("spine.scriptActive"), "写明当前生效的是哪个");
+
+  // 点「本地脚本」：只写草稿（不是立刻保存），并且高亮跟着走
+  btns[1].props.onClick();
+  ok(modelS.edits.some(([name, text]) => name === "officialScript" && text === "1"), "点本地脚本写 officialScript=1 进草稿");
+  ok(modelS.saved === 0, "点按钮不自动保存（仍要按保存）");
+  const afterEdit = choiceButtons(T.renderPanel({ t: (k) => k, model: modelS, actions: modelS.actions() }, fakeState, "session", () => {}, () => {}));
+  const draftModel = new SettingsFormModel({}, []);
+  draftModel.overrides = { officialScript: "1" };
+  const treeDraft = T.renderPanel({ t: (k) => k, model: draftModel, actions: draftModel.actions() }, fakeState, "session", () => {}, () => {});
+  const draftBtns = choiceButtons(treeDraft);
+  ok(String(draftBtns[1].props.className).includes("sp-choice-on"), "草稿里选了脚本就高亮脚本");
+  ok(!String(draftBtns[0].props.className).includes("sp-choice-on"), "草稿里官方模型不再高亮");
+  ok(texts(treeDraft).includes("spine.scriptDraft"), "草稿态明确写「改了要保存才生效」");
+  ok(afterEdit.length === 2, "重画后按钮还在两个");
+
+  // settings 里已经是 1：高亮脚本
+  const scriptState = { ...fakeState, settings: { ...fakeState.settings, officialScript: 1 } };
+  const treeScript = T.renderPanel({ t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() }, scriptState, "session", () => {}, () => {});
+  const scriptBtns = choiceButtons(treeScript);
+  ok(String(scriptBtns[1].props.className).includes("sp-choice-on"), "officialScript=1 时高亮本地脚本");
+  ok(texts(treeScript).includes("spine.scriptLocalHint"), "脚本态下的说明是零模型调用");
+
+  // 两行提示要真能读：原来都用 sp-field-hint（10.5px + dimmed），深色底上几乎融进背景。
+  {
+    const nodesOfClass = (root, cls) => {
+      const out = [];
+      walk(root, ({ kind, node }) => {
+        if (kind !== "node" || !node.props) return;
+        const list = String(node.props.className || "").split(/\s+/).filter(Boolean);
+        if (list.includes(cls)) out.push(node);
+      });
+      return out;
+    };
+    const hints = nodesOfClass(treeScript, "sp-choice-hint");
+    const nows = nodesOfClass(treeScript, "sp-choice-now");
+    ok(hints.length === 1, "「说明」一行是 sp-choice-hint（" + hints.length + "）");
+    ok(nows.length === 1, "「当前」一行是 sp-choice-now（" + nows.length + "）");
+    // 只看这颗「大刀归纳器」的容器：面板别处（旋钮说明、组提示）仍该用 sp-field-hint。
+    const choiceBox = nodesOfClass(treeScript, "sp-choice")[0];
+    ok(Boolean(choiceBox), "找得到大刀归纳器容器");
+    ok(!nodesOfClass(choiceBox, "sp-field-hint").length, "容器内不再用 10.5px 的 sp-field-hint（" + nodesOfClass(choiceBox, "sp-field-hint").length + "）");
+    ok(!nodesOfClass(choiceBox, "sp-dim").length, "容器内不再用 sp-dim（" + nodesOfClass(choiceBox, "sp-dim").length + "）");
+    for (const node of [...hints, ...nows]) {
+      const cls = String(node.props.className || "").split(/\s+/);
+      ok(!cls.includes("sp-field-hint") && !cls.includes("sp-dim"), "提示节点不带 sp-field-hint / sp-dim：" + node.props.className);
+    }
+    ok(hints[0].type === "div" || typeof hints[0].type === "function", "说明是块级节点（自带背景）");
+    // 「当前」行把选中的选项名包进 b：强调靠元素，不靠整行变色。
+    const bolds = [];
+    walk(nows[0], (entry) => { if (entry.kind === "node" && entry.node.type === "b") bolds.push(entry.node); });
+    ok(bolds.length === 1, "「当前」行有一个 b 包住选中项（" + bolds.length + "）");
+    ok(bolds[0] && labelOf(bolds[0]) === "spine.scriptLocal", "b 里是当前选中的选项名：" + labelOf(bolds[0]));
+    ok(texts(nows[0]).includes("spine.scriptActive"), "「当前」行仍然带前缀文案");
+
+    // 默认档（officialScript=0）也要走同一套样式
+    const defaultHints = nodesOfClass(treeS, "sp-choice-hint");
+    const defaultNow = nodesOfClass(treeS, "sp-choice-now");
+    ok(defaultHints.length === 1 && defaultNow.length === 1, "默认档下也是 choice 专用的两行");
+    const defaultBold = [];
+    walk(defaultNow[0], (entry) => { if (entry.kind === "node" && entry.node.type === "b") defaultBold.push(entry.node); });
+    ok(defaultBold.length === 1 && labelOf(defaultBold[0]) === "spine.scriptModel", "默认档的 b 是官方模型：" + labelOf(defaultBold[0]));
+
+    // CSS 侧：字号必须抬到 11.5px，颜色不能是 dimmed
+    const css = String(T.SPINE_CSS);
+    const rule = (selector) => {
+      const at = css.indexOf(selector + "{");
+      return at < 0 ? "" : css.slice(at, css.indexOf("}", at) + 1);
+    };
+    const hintRule = rule(".sp-choice-hint");
+    const nowRule = rule(".sp-choice-now");
+    const boldRule = rule(".sp-choice-now b");
+    ok(hintRule.includes("font-size:11.5px"), "sp-choice-hint 字号 11.5px：" + hintRule.slice(0, 60));
+    ok(hintRule.includes("line-height:1.6"), "sp-choice-hint 行高 1.6");
+    ok(hintRule.includes("var(--dsw-alias-label-secondary)") && !hintRule.includes("dimmed"), "sp-choice-hint 用 secondary，不是 dimmed");
+    ok(hintRule.includes("padding:6px 8px") && hintRule.includes("background:var(--dsw-alias-bg-layer-2)"), "sp-choice-hint 有自己的底色块");
+    ok(hintRule.includes("border-radius:6px") && hintRule.includes("margin-top:4px"), "sp-choice-hint 圆角与上间距");
+    ok(nowRule.includes("font-size:11.5px") && nowRule.includes("margin-top:4px"), "sp-choice-now 字号与上间距");
+    ok(nowRule.includes("var(--dsw-alias-label-secondary)") && !nowRule.includes("dimmed"), "sp-choice-now 用 secondary，不是 dimmed");
+    ok(boldRule.includes("var(--dsw-alias-label-primary)") && boldRule.includes("font-weight:600"), "当前值用 label-primary + 600 强调：" + boldRule.slice(0, 60));
+  }
+
+  // 不进 11 项预设：点推荐档不能改到 officialScript
+  const modelP = new SettingsFormModel({}, []);
+  hooks.length = 0;
+  const treeP = T.renderPanel({ t: (k) => k, model: modelP, actions: modelP.actions() }, fakeState, "session", () => {}, () => {});
+  const presetBtn = (() => { let hit = null; walk(treeP, ({ kind, node }) => { if (kind === "node" && node.type === "button" && labelOf(node) === "spine.presetRecommended") hit = node; }); return hit; })();
+  presetBtn?.props?.onClick?.();
+  ok(modelP.edits.length === 11, "推荐档仍然是 11 项（" + modelP.edits.length + "）");
+  ok(!modelP.edits.some(([name]) => name === "officialScript"), "预设不碰大刀归纳器（花钱的事让人自己选）");
+  ok(!T.PRESETS.some((preset) => Object.prototype.hasOwnProperty.call(preset.values || {}, "officialScript")), "三个预设的 values 里都没有 officialScript");
+}
+
 console.log("9h. 滑块上下限：不许从 0 开始，关掉用勾");
 {
   const meta = T.KNOB_META;
@@ -735,6 +924,64 @@ console.log("9h. 滑块上下限：不许从 0 开始，关掉用勾");
   ok(pbRange && pbRange.props.disabled === true, "关着的旋钮滑块置灰");
   const pbBox = findKnob(treeOff, "paybackTurns", "checkbox");
   ok(pbBox && pbBox.props.checked === false, "关着的旋钮勾是空的");
+}
+
+console.log("9i. 时间线时间列：表格用短格式，完整时间进 title");
+{
+  // fmtRowTime：表格专用 MM-DD HH:mm:ss（14 字符），0 仍然是破折号
+  ok(T.fmtRowTime(0) === "—" && T.fmtRowTime(undefined) === "—", "表格时间没有值时也是破折号");
+  const sample = new Date(2026, 10, 25, 0, 15, 33).getTime();
+  ok(T.fmtRowTime(sample) === "11-25 00:15:33", "表格时间格式 MM-DD HH:mm:ss：" + T.fmtRowTime(sample));
+  ok(T.fmtRowTime(sample).length === 14, "表格时间 14 字符，装得进时间列（" + T.fmtRowTime(sample).length + "）");
+  ok(!T.fmtRowTime(sample).includes("2026"), "表格里不再带年份（放不下）");
+  ok(T.fmtClock(sample) === "2026-11-25 00:15:33", "fmtClock 仍然是完整日期：" + T.fmtClock(sample));
+  ok(T.fmtClock(sample).length === 19, "完整日期仍为 19 字符");
+
+  // 时间线单元格：文本是短格式，title 是完整日期
+  const timedCuts = [
+    { id: "t1", kind: "small", tokens: 4000, start: 10, end: 20, time: sample, rawNames: [], model: "m" },
+    { id: "t2", kind: "big", tokens: 60000, start: 100, end: 900, time: sample + 3600000, rawNames: [], model: "m" },
+  ];
+  const timeState = { ...fakeState, cuts: timedCuts };
+  const timeTree = T.renderPanel({ t: (k) => k, model, actions }, timeState, "session", () => {}, () => {});
+  const timeCells = [];
+  walk(timeTree, ({ kind, node }) => {
+    if (kind !== "node" || !node.props) return;
+    const cls = String(node.props.className || "").split(" ");
+    if (cls.includes("sp-cell-time") && node.type === "span") timeCells.push(node);
+  });
+  // 表头 + 两行
+  const rowCells = timeCells.filter((node) => node.props.title);
+  ok(rowCells.length === 2, "每一刀的时间单元格都挂了 title（" + rowCells.length + "）");
+  ok(rowCells.every((node) => /^\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(node.children.join(""))),
+    "单元格文本是 MM-DD HH:mm:ss：" + rowCells.map((n) => n.children.join("")).join(" | "));
+  ok(rowCells.every((node) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(node.props.title)),
+    "title 是完整 YYYY-MM-DD HH:mm:ss：" + rowCells.map((n) => n.props.title).join(" | "));
+  // 时间线是「新的在前」，所以行序与 cuts 相反；两边的时间集合必须一致。
+  const titles = rowCells.map((node) => node.props.title).sort();
+  const wanted = timedCuts.map((cut) => T.fmtClock(cut.time)).sort();
+  ok(titles.join("|") === wanted.join("|"), "title 与每一刀的真实时间一一对得上：" + titles.join(" | "));
+  ok(rowCells.every((node) => String(node.props.className).includes("sp-cell-time")), "单元格都带 sp-cell-time");
+  ok(timeCells.some((node) => !node.props.title && node.children.join("") === "spine.colTime"), "表头时间列用同一个类（宽度对齐）");
+
+  // 面板别处仍然是完整日期，不许被这次改动带跑：全部会话的副标题与 KPI 提示都用 fmtClock。
+  const allScopeTree = T.renderPanel({ t: (k) => k, model, actions }, fakeState, "all", () => {}, () => {});
+  const allScopeText = texts(allScopeTree);
+  ok(allScopeText.includes(T.fmtClock(fakeState.global.generatedAt)), "副标题/生成时间仍是完整日期：" + T.fmtClock(fakeState.global.generatedAt));
+  ok(allScopeText.includes("spine.generated"), "KPI 的时间提示还在");
+  ok(!allScopeText.includes(T.fmtRowTime(fakeState.global.generatedAt)), "别处没有偷偷换成表格短格式");
+
+  // CSS：时间列 92px + nowrap
+  const css = String(T.SPINE_CSS);
+  const rowRule = (css.match(/\.sp-row\{[^}]*\}/) || [""])[0];
+  const headRule = (css.match(/\.sp-head\{[^}]*\}/) || [""])[0];
+  ok(rowRule.includes("92px"), "行的时间列 92px：" + (rowRule.match(/grid-template-columns:[^;]*/) || [""])[0]);
+  ok(headRule.includes("92px"), "表头的时间列也是 92px（两行对齐）");
+  ok(!rowRule.includes("54px"), "时间列不再是 54px");
+  ok(headRule.includes("1fr") && rowRule.includes("1fr"), "1fr 仍留着吸收多余宽度");
+  ok(css.includes(".sp-cell-time{white-space:nowrap"), "时间单元格 nowrap：" + ((css.match(/\.sp-cell-time\{[^}]*\}/) || [""])[0]));
+  ok(css.includes("font-variant-numeric:tabular-nums"), "等宽数字，秒位不跳");
+  ok(rowRule.includes("padding:1px 6px") && rowRule.includes("font-size:11.5px"), "行样式其它部分没被改动");
 }
 
 console.log("10. 计数不受时间线长度影响");
@@ -985,6 +1232,26 @@ ok(calls[0].body.op === "describe", "op 放在 body 里，不靠 URL 分段");
   ok(offline.getSnapshot().status === "unavailable" && offline.getSnapshot().error.includes("fetch failed"), "连不上时状态是 unavailable 并带原因");
   globalThis.fetch = realFetch;
   globalThis.document = realDocument;
+}
+
+console.log("N. 自定义档保留手工调过的那套值");
+{
+  const store = T.createSettingsStore();
+  ok(store.applyCustom() === false, "没手工改过时，自定义档退回生效值");
+  store.edit("minTokens", "30000");
+  ok(store.getSnapshot().draft.minTokens === "30000", "改一格进草稿");
+  store.reset("chunkMax");
+  ok(store.getSnapshot().custom && store.getSnapshot().custom.minTokens === "30000", "手工值被记住");
+  ok(store.applyCustom() === true && store.getSnapshot().draft.minTokens === "30000", "点自定义档恢复手工值");
+  store.setMany({ minTokens: "20000", chunkMax: "32000" });
+  ok(store.getSnapshot().draft.minTokens === "20000", "点推荐档会覆盖草稿");
+  store.applyCustom();
+  ok(store.getSnapshot().draft.minTokens === "30000", "再点自定义档，回到手工那套而不是清空");
+  store.discard();
+  ok(store.applyCustom() === true && store.getSnapshot().draft.minTokens === "30000", "清空草稿后仍能恢复");
+  const fresh = T.createSettingsStore();
+  fresh.edit("minTokens", "21000");
+  ok(fresh.getSnapshot().custom.minTokens === "21000", "新 store 各自记各自的");
 }
 
 console.log("\n通过 " + pass + " / 失败 " + fail);

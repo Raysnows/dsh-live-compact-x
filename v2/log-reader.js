@@ -11,7 +11,10 @@ import { readFileSync, statSync } from "node:fs";
 import { zstdDecompressSync } from "node:zlib";
 
 const MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
-const SEQ_RE = /^\{"type":"tool\/result","seq":(\d+)/;
+// 任何事件都进索引：卡片上的 seq 指向的不只是 tool/result，还有 user/assistant 消息。
+// 只认 tool/result 时，8,425 帧里只有 2,052 个可寻址，其余 seq 等于空指针——
+// 这也是上游必须给每刀写一份 span 全文副本的原因。放宽后卡片可以只靠日志回读。
+const SEQ_RE = /^\{"type":"[^"]+","seq":(\d+)/;
 
 function scanFrames(buf) {
   const frames = [];
@@ -23,6 +26,24 @@ function scanFrames(buf) {
 function decode(buf, offsets, k) {
   const s = offsets[k], e = offsets[k + 1] ?? buf.length;
   try { return zstdDecompressSync(buf.subarray(s, e)).toString("utf8"); } catch { return null; }
+}
+
+/** 从一个事件里取出对卡片有用的正文：工具结果、助手正文（不含 reasoning）、用户原话。 */
+export function eventBody(event) {
+  const data = event?.data ?? {};
+  const message = data.message ?? {};
+  const content = message.content ?? data.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) {
+    if (typeof data.text === "string") return data.text;
+    if (typeof message.text === "string") return message.text;
+    return "";
+  }
+  return content
+    .filter((x) => x && typeof x.text === "string")
+    .filter((x) => x.type === undefined || ["text", "input_text", "output_text"].includes(x.type))
+    .map((x) => x.text)
+    .join("\n");
 }
 
 export class LogReader {
@@ -101,11 +122,7 @@ export class LogReader {
       const m = SEQ_RE.exec(line);
       if (!m || Number(m[1]) !== seq) continue;
       let o; try { o = JSON.parse(line); } catch { continue; }
-      const c = o?.data?.message?.content ?? o?.data?.content;
-      if (typeof c === "string") return c;
-      if (!Array.isArray(c)) return "";
-      return c.filter((x) => x && (x.type === undefined || ["text","input_text","output_text"].includes(x.type)))
-        .map((x) => x.text || "").join("\n");
+      return eventBody(o);
     }
     return null;
   }

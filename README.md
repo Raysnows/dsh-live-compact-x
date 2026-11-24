@@ -14,7 +14,7 @@
 本 fork 在保留上游机制的前提下加了三件事：
 
 1. **净收益门槛**——切掉的 token 必须明显大于这张卡的成本，不再“切了个寂寞”；
-2. **零副本存储**——被切掉的原文不另存一份，卡片只记事件号，回读时从会话日志取（实测省 10 倍空间）；
+2. **上下文零副本**——卡片里只有事件号、不走复制正文；回读按事件号从会话日志取（1.3.19 起 span 全文副本默认不再落盘，只有段内已出现修剪标记、或 `SPINE_SPAN_COPY=1` 时才写一份兜底）；
 3. **大刀 + 小刀**——小刀照旧切尾巴；追不上时请官方大压缩出手，压完继续小刀。
 
 > 还有一个**中刀**（卡片合并：从某张旧卡一路切到尾巴，整段重压成一张卡），默认**关闭**——它一次会吃掉很大一段原文，属于“顶不住时才开”的档位。
@@ -25,10 +25,10 @@
 ## 安装
 
 ```
-plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.17")
+plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.20")
 ```
 
-也可以直接用 npm 装：`npm i dsh-live-compact-x@1.3.17`（想跟 beta 通道就写 `@beta`）。装完重启宿主。它的 `cordis.patch.yml` 会先禁用官方 `compaction-basic` 的**插件安装位**，再插入自己。
+也可以直接用 npm 装：`npm i dsh-live-compact-x@1.3.20`（想跟 beta 通道就写 `@beta`）。装完重启宿主。它的 `cordis.patch.yml` 会先禁用官方 `compaction-basic` 的**插件安装位**，再插入自己。
 
 ### 推荐配合 `dsh-context` 一起用
 
@@ -44,6 +44,37 @@ plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.17")
 ```
 plugin_manager: install_bundle(target: "dsh-context")
 ```
+
+## 卡片里有什么（1.3.18 起）
+
+每一刀写回上下文的是一张 `Spine extract.` 卡片，**只留事实、不留说明文**：
+
+```
+Spine extract.
+保留 2 行 / 缺 0 项 / 省略工具行 817；截于 2026-11-24 15:30。
+结论（当时的说法，未核实；括号=事件号 seq）：
+- [根因] 根因是 presets.js 的 exports 少了 ./package.json。（seq 2140）
+- [结论] 已修复：补上 exports 并重装，面板恢复正常。（seq 2140）
+出现过的文件（未必改过）：presets.js、package.json
+原文（用户约束 + 工具输出；[tool] 不是用户的话）：
+- [user] 修好面板，不要动上游。
+调用证据：
+- 第 20 轮 `run_code` 完成 [call_abc]
+回读位置：seq 2146、seq 2152（失败）
+原文在本地备份，未随本次请求。
+省略的工具原文在 ~/.dsh/compaction-spine/shadow/session-…/cut-1795500000000-abcdef12.txt。只读这个文件所在目录，不要扫别的会话。需要这条原文再读，不要默认读进来。
+```
+
+规则：
+
+1. **结论**取自被切掉的助手正文，五类标签 `根因 / 改动 / 失败 / 未验证 / 结论`，每条带事件号；标注「未核实」，要核实按 `seq` 回读原文。
+2. **改动文件**只收文件（不收目录、不收 URL），最多 6 个。
+3. **原文**是用户约束与硬事实，照原句抄。
+4. **调用证据**最多 10 条（失败优先）；**回读位置**压成一行 seq 区间，最多 6 段。
+5. 空的小节整段不写——纯壳卡片从 372 字符压到 **93 字符**（省 75%），真实切段平均省 **14%**、最多省 **29%**。
+6. 长工具输出取「首行 + 关键行（PASS/FAIL/计数/写入/报错）+ 末行」，每行 200 字符、最多 4 行。
+
+> **1.3.19 起的存储口径**：`index.jsonl` 索引**所有**事件（user / assistant / tool），卡片上的 `seq` 都能直接按它从会话日志回读（实测 21,208 条事件、0.14ms/条）。span 全文副本（`cut-*.txt`）默认**不再写**——上游每刀一份、本机实测 15 刀 15 份（最大 142k 字符），是“零副本”名不副实的那一半。只有两种情况仍写：段内已经出现 `[... tool result middle pruned ...]`（日志已不可靠），或显式设 `SPINE_SPAN_COPY=1`（回滚开关）。
 
 ## 和官方 compaction-basic 是什么关系
 
@@ -89,11 +120,24 @@ plugin_manager: install_bundle(target: "dsh-context")
 
 数据来自投影 `spine.cuts`（纯同步折叠会话事件）+ 只读的决策日志汇总；不额外开通道、不读会话内容。宿主没有投影能力时面板显示一行提示，压缩功能本身不受影响。
 
+### 大刀选模型还是脚本（1.3.20 起）
+
+大刀是整段归纳，默认仍由**官方模型**生成摘要。现在切点卡的大刀组可以选：
+
+| 方式 | 好处 | 代价 / 边界 |
+|---|---|---|
+| **官方模型**（默认） | 摘要更连贯，会按上下文取舍；适合长任务接续 | 多发一次模型请求，有 LLM 成本；摘要本身仍可能漏写或改写细节 |
+| **本地脚本** | 零模型调用；卡片带 `seq`，结论和原文可按事件号回读核对 | 主要是机械摘录，归纳能力弱于模型；卡片不完整、为空或并不比原文短时会**拒绝这一刀**，不会偷偷回退模型 |
+
+两条路吃的是**同一份 `input.messages`**，不是脚本另读一套历史。设置存在 `officialScript`（0/1），支持环境变量 `SPINE_OFFICIAL_SCRIPT` 和自定义档；不改动原来三档内置预设。总开关关闭时忽略这个选项，完全交回宿主官方行为。
+
+实测 6 个真实会话大段：5 个成功出卡（卡片为原文的 2%–10%），1 个因 57 条硬事实未能覆盖而拒绝，符合「坏卡不静默放行」的约定。脚本不是官方摘要的无损替代品，默认仍建议模型；在意这一次模型调用、且接受机械摘录时再选脚本。
+
 ## 配置
 
 优先级：**显式 config > 生效中的自定义档（本会话 > 本工作区 > 全部会话）> `~/.dsh/spine-settings.json` > 环境变量 > 默认值**。
 
-面板上的旋钮**直接写这份文件**（`/api/dsh-live-compact-x-settings`）：保存成功会在旋钮卡下面写「已保存 HH:MM:SS」，失败把宿主返回的原因原样贴出来；通道连不上（老宿主 / 页面没刷新）时滑块停手并写明「配置通道不通」——不会再出现「点了没反应」。文件只在插件自己的路由里写，同源 + 回环校验，写之前校验键名与数值范围。
+面板上的旋钮**直接写这份文件**（`/api/dsh-live-compact-x-settings`）：保存成功会在旋钮卡下面写「已保存 YYYY-MM-DD HH:mm:ss」，失败把宿主返回的原因原样贴出来；通道连不上（老宿主 / 页面没刷新）时滑块停手并写明「配置通道不通」——不会再出现「点了没反应」。文件只在插件自己的路由里写，同源 + 回环校验，写之前校验键名与数值范围。
 
 ```json
 {
@@ -108,6 +152,7 @@ plugin_manager: install_bundle(target: "dsh-context")
   "mergeMaxSpan": 4,
   "mergeBreakEven": 2,
   "officialAbove": 300000,
+  "officialScript": 0,
   "officialCooldownMs": 1200000,
   "paybackTurns": 0,
   "spanBandRatio": 0
@@ -130,6 +175,7 @@ plugin_manager: install_bundle(target: "dsh-context")
 | `paybackTurns` | `SPINE_PAYBACK_TURNS` | 0（关闭） | 小刀限速：一次性重算超过 净赚×轮数 就不切 |
 | `spanBandRatio` | `SPINE_SPAN_BAND_RATIO` | 0（关闭） | 动态刀长：单刀上限 = 上下文 × 比例，夹在 chunkMin..chunkMax |
 | `officialAbove` | `SPINE_OFFICIAL_ABOVE` | 0（示例 300000） | 超过它且无可切段时请官方大压缩；0 = 关 |
+| `officialScript` | `SPINE_OFFICIAL_SCRIPT` | **0（官方模型）** | 大刀归纳方式：0 = 官方模型摘要；1 = 本地脚本卡片（零模型调用，坏卡拒绝且不回退模型） |
 | `officialCooldownMs` | `SPINE_OFFICIAL_COOLDOWN_MS` | 1200000 | 两次大压缩的最小间隔 |
 | — | `SPINE_STORE` | `v2` | 设 `v1` 回到上游影子副本路径 |
 | — | `SPINE_SESSIONS_DIR` | `$DSH_HOME/sessions` | 会话日志根，v2 回读用 |
@@ -180,7 +226,7 @@ plugin_manager: install_bundle(target: "dsh-context")
 |---|---|---|
 | 1 | 净收益门槛（切掉 − 卡片 < 门槛就不切） | `netgain.js`、`index.js` |
 | 2 | 影子上限默认 256MB → 64MB（v1 模式） | `shadow.js` |
-| 3 | 零副本存储：索引 + 日志回读 + 修剪兜底 | `v2/`、`raw.js` |
+| 3 | 零副本：索引（全事件）+ 日志回读 + 修剪兜底 | `v2/`、`raw.js` |
 | 4 | 连切（一次收尾多刀） | `index.js` |
 | 5 | 大刀：跨轮扩段 / 官方大压缩交接 | `plan.js`、`index.js` |
 | 6 | 文件层设置 `~/.dsh/spine-settings.json` | `settings.js` |

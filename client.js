@@ -59,6 +59,7 @@ window.__ModuleLoader__.load({
       mergeCooldownMs: ["中刀冷却（毫秒）", "两刀中刀之间的最小间隔"],
       officialAbove: ["大刀启用线", "超过它且没有可切段时请官方压缩"],
       officialCooldownMs: ["大刀冷却（毫秒）", "两次大压缩的最小间隔"],
+      officialScript: ["大刀归纳器", "0 = 官方模型摘要，1 = 本地脚本卡片"],
       paybackTurns: ["小刀回本轮数", "重算超过 净赚×它 就不切"],
       spanBandRatio: ["动态刀长比例", "单刀上限 = 上下文 × 它"],
       keepRounds: ["保留原文轮数", "最近几轮留原文"],
@@ -172,6 +173,8 @@ window.__ModuleLoader__.load({
         doc: null, docLoading: false, docError: "",
         sw: null, swSaving: false, swSavedAt: 0, swError: "", sid: "",
         presets: null, presetSaving: false, presetError: "",
+        // 上一次手工改出来的那套值：切回「自定义档」时用它恢复，而不是把草稿清掉。
+        custom: null,
       };
       const listeners = new Set();
       const publish = (patch) => {
@@ -186,7 +189,7 @@ window.__ModuleLoader__.load({
           const key = typeof sid === "string" ? sid : "";
           if (snapshot.status === "loading") return;
           if (snapshot.status === "ready" && snapshot.sid === key) return;
-          publish({ status: "loading", error: "", sid: key });
+          publish({ status: "loading", error: "", sid: key, draft: {}, custom: null });
           try {
             const payload = await postBridge("describe", { op: "describe", sid: key });
             if (!payload.ok) throw new Error(payload.message || payload.code || "配置通道不可用");
@@ -196,11 +199,15 @@ window.__ModuleLoader__.load({
             publish({ status: "unavailable", error: String(error && error.message ? error.message : error) });
           }
         },
-        edit(name, text) { publish({ draft: { ...snapshot.draft, [name]: String(text) }, saveError: "" }); },
+        edit(name, text) {
+          const draft = { ...snapshot.draft, [name]: String(text) };
+          publish({ draft, custom: { ...(snapshot.custom || {}), ...draft }, saveError: "" });
+        },
         reset(name) {
           const fallback = snapshot.defaults[name];
           if (fallback === undefined) return;
-          publish({ draft: { ...snapshot.draft, [name]: String(fallback) }, saveError: "" });
+          const draft = { ...snapshot.draft, [name]: String(fallback) };
+          publish({ draft, custom: { ...(snapshot.custom || {}), ...draft }, saveError: "" });
         },
         setMany(values) {
           const next = { ...snapshot.draft };
@@ -208,6 +215,13 @@ window.__ModuleLoader__.load({
           publish({ draft: next, saveError: "" });
         },
         discard() { publish({ draft: {}, saveError: "" }); },
+        // 「自定义档」不是清空：把手动调过的那套值填回草稿，没有就退回生效值。
+        applyCustom() {
+          const custom = snapshot.custom;
+          if (!custom || !Object.keys(custom).length) return false;
+          publish({ draft: { ...custom }, saveError: "" });
+          return true;
+        },
         async persist(patch) {
           if (snapshot.saving) return false;
           const keys = Object.keys(patch || {});
@@ -217,7 +231,7 @@ window.__ModuleLoader__.load({
             const payload = await postBridge("save", { op: "save", patch });
             if (!payload.ok) throw new Error(payload.message || payload.code || "保存失败");
             const { switch: sw, ...rest } = payload.value || {};
-            publish({ status: "ready", saving: false, error: "", savedAt: rest.savedAt || Date.now(), ...rest, sw: sw || snapshot.sw, draft: {} });
+            publish({ status: "ready", saving: false, error: "", savedAt: rest.savedAt || Date.now(), ...rest, sw: sw || snapshot.sw, draft: {}, custom: null });
             return true;
           } catch (error) {
             publish({ saving: false, saveError: String(error && error.message ? error.message : error) });
@@ -424,6 +438,13 @@ window.__ModuleLoader__.load({
       "spine.groupSmallHint": "抢在官方压缩之前先切尾巴，一行内容都不丢。",
       "spine.groupMidHint": "上下文很大时，把连续的老卡片并成一张；不省钱就不动。",
       "spine.groupBigHint": "前两把刀都切不动时，才请官方压缩接手。",
+      "spine.scriptChoiceTitle": "大刀怎么归纳",
+      "spine.scriptModel": "官方模型",
+      "spine.scriptLocal": "本地脚本",
+      "spine.scriptModelHint": "用官方模型把整段归纳成摘要：更连贯、更会取舍，但会多发一次模型请求，有 LLM 成本。",
+      "spine.scriptLocalHint": "用本地脚本按规则摘录同一段：零模型调用、可按 seq 回读核对；归纳能力弱于模型，卡片不完整时会拒绝，不会偷偷改用模型。",
+      "spine.scriptActive": "当前",
+      "spine.scriptDraft": "改了要保存才生效",
       "spine.docs": "文档与出处",
       "spine.docsHint": "点开看文档，或复制路径",
       "spine.docsReadme": "README",
@@ -595,6 +616,13 @@ window.__ModuleLoader__.load({
       "spine.knifeShortOfficial": "official",
       "spine.knifeShortPlugin": "legacy",
       "spine.knifeBigHint": "The plugin asked the official summarizer to take over",
+      "spine.scriptChoiceTitle": "How the big cut summarizes",
+      "spine.scriptModel": "Official model",
+      "spine.scriptLocal": "Local script",
+      "spine.scriptModelHint": "The official model writes a coherent summary and selects what matters, but it makes one extra LLM request.",
+      "spine.scriptLocalHint": "A local script extracts the same span with zero model calls and seq-based recall. It is less semantic; an incomplete card is refused and never falls back to the model silently.",
+      "spine.scriptActive": "Active",
+      "spine.scriptDraft": "Saved only after you save",
       "spine.knifeOfficialHint": "Native compaction outside the plugin",
       "spine.knifeStats": "Knife stats",
       "spine.colKnife": "knife",
@@ -667,6 +695,7 @@ window.__ModuleLoader__.load({
       ".sp-scope-btn[data-on='1']{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);font-weight:600}",
       ".sp-topbar-sub{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
       ".sp-topbar-reload{margin-left:8px;flex:none;font-size:11px;padding:2px 9px}",
+      ".sp-version{flex:none;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:1px 8px;background:var(--dsw-alias-bg-layer-2)}",
       ".sp-master{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:2px 10px;background:var(--dsw-alias-bg-layer-2);cursor:pointer;user-select:none}",
       ".sp-master-on{color:var(--dsw-alias-label-primary)}",
       ".sp-master:not(.sp-master-on){border-color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-border-l1))}",
@@ -694,8 +723,10 @@ window.__ModuleLoader__.load({
       ".sp-trow:hover{background:var(--dsw-alias-interactive-bg-hover)}",
       ".sp-trow-off{opacity:.55}",
       ".sp-knife{display:flex;align-items:center;min-width:0}",
-      ".sp-head{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 54px 26px 12px;gap:10px;padding:0 6px 4px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
-      ".sp-row{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 54px 26px 12px;gap:10px;align-items:center;padding:1px 6px;border-radius:6px;font-size:11.5px;line-height:1.6}",
+      // 时间列 92px：改短格式后是 "11-25 00:15:33"（14 字符），54px 装不下会截成 "2026-11…"。
+      ".sp-head{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 92px 26px 12px;gap:10px;padding:0 6px 4px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
+      ".sp-row{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 92px 26px 12px;gap:10px;align-items:center;padding:1px 6px;border-radius:6px;font-size:11.5px;line-height:1.6}",
+      ".sp-cell-time{white-space:nowrap;font-variant-numeric:tabular-nums}",
       ".sp-scroll-tall{max-height:420px;overflow-y:auto;overscroll-behavior:contain}",
       ".sp-tl-more{display:flex;justify-content:center;margin-top:6px}",
       ".sp-head>span,.sp-row>span,.sp-trow>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
@@ -791,6 +822,14 @@ window.__ModuleLoader__.load({
       ".sp-scope-row{display:flex;gap:6px;flex-wrap:wrap}",
       ".sp-preset-form .sp-preset{margin-bottom:0}",
       ".sp-field-range{font-size:10.5px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}",
+      ".sp-choice{margin-bottom:10px}",
+      ".sp-choice-row{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 2px}",
+      ".sp-choice-on{border-color:var(--dsw-alias-brand-primary,#4C8DF6);color:var(--dsw-alias-brand-primary,#4C8DF6);font-weight:600}",
+      // sp-field-hint 是 10.5px + dimmed，在深色底上几乎融进背景（用户实测看不清）。
+      // 这两行是「选哪个」的唯一说明，必须能读：抬字号、用 secondary、给一块底。
+      ".sp-choice-hint{font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-secondary);padding:6px 8px;background:var(--dsw-alias-bg-layer-2);border-radius:6px;margin-top:4px}",
+      ".sp-choice-now{font-size:11.5px;color:var(--dsw-alias-label-secondary);margin-top:4px}",
+      ".sp-choice-now b{color:var(--dsw-alias-label-primary);font-weight:600}",
       ".sp-warn{margin:6px 0 10px;padding:8px 10px;border-radius:8px;border:1px solid var(--dsw-alias-state-warning-primary,#C88A2E);background:rgba(200,138,46,.08)}",
       ".sp-warn-title{font-size:12px;font-weight:600;color:var(--dsw-alias-state-warning-primary,#C88A2E);margin-bottom:4px}",
       ".sp-warn-body{font-size:11px;line-height:1.55;color:var(--dsw-alias-label-secondary);margin-bottom:6px}",
@@ -833,6 +872,9 @@ window.__ModuleLoader__.load({
         id: "big",
         title: "spine.knifeBig",
         hint: "spine.groupBigHint",
+        // 大刀怎么归纳：官方模型摘要 / 本地脚本卡片。两选一，写进 officialScript。
+        // 不是滑块：它不是连续量，也没法「拖一半」。
+        choice: "officialScript",
         keys: ["officialAbove", "officialCooldownMs", "bigGate", "keepRounds", "keepRoundTokens"],
       },
       // 实验性功能放最后：默认收起也不抢眼，开开关才生效。
@@ -911,7 +953,25 @@ window.__ModuleLoader__.load({
       if (!n) return "—";
       const d = new Date(n);
       const two = (v) => String(v).padStart(2, "0");
-      return two(d.getHours()) + ":" + two(d.getMinutes()) + ":" + two(d.getSeconds());
+      // 面板上并排看几刀时，只有时分秒看不出是哪天（跨天的会话全糊在一起）。
+      return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate())
+        + " " + two(d.getHours()) + ":" + two(d.getMinutes()) + ":" + two(d.getSeconds());
+    }
+
+    /**
+     * 时间线表格专用的短时间：MM-DD HH:mm:ss。
+     *
+     * 表格里一格只有 92px，塞不下 19 字符的完整年份（实测被截成 "2026-11…"）。
+     * 所以这里省掉年份，但完整时间挂在单元格 title 上；面板别处（KPI、最近一刀、
+     * 保存时间、卡片截断时间）仍用 fmtClock 的完整 YYYY-MM-DD HH:mm:ss。
+     */
+    function fmtRowTime(ms) {
+      const n = Number(ms) || 0;
+      if (!n) return "—";
+      const d = new Date(n);
+      const two = (v) => String(v).padStart(2, "0");
+      return two(d.getMonth() + 1) + "-" + two(d.getDate())
+        + " " + two(d.getHours()) + ":" + two(d.getMinutes()) + ":" + two(d.getSeconds());
     }
 
     function copyText(text) {
@@ -1226,7 +1286,11 @@ window.__ModuleLoader__.load({
           h("span", { className: "sp-dim sp-mono" }, range),
           h("span", { className: "sp-num sp-mono" }, fmtTokens(cut.tokens)),
           h("span", { className: "sp-dim", title: cut.model || cut.provider || "" }, cut.model || cut.provider || "—"),
-          h("span", { className: "sp-dim sp-num" }, fmtClock(cut.time)),
+          // 表格里放短格式（放得下），完整时间进 title（悬停能看到年份）。
+          h("span", {
+            className: "sp-dim sp-num sp-cell-time",
+            title: fmtClock(cut.time),
+          }, fmtRowTime(cut.time)),
           h("span", { className: "sp-num sp-dim" }, files.length ? String(files.length) : "—"),
           h(Chevron, { className: "sp-chev-row" })),
         h("div", { className: "sp-detail" },
@@ -1321,6 +1385,8 @@ window.__ModuleLoader__.load({
       const subtitle = all
         ? t("spine.scopeAllHint") + " " + fmtClock(global.generatedAt)
         : t("spine.scopeSessionHint");
+      // 显示成 v1.3.19；版本串本身带 v 的话不重复写（vv1.3.19）。
+      const versionValue = String(docs.version ?? "").trim().replace(/^v/i, "");
       // 总开关：作用在「当前范围」上——看本会话就关本会话，切到全部会话就关全部。
       const swState = (cfg && cfg.sw) || null;
       const switchReady = Boolean(store && cfg && cfg.status === "ready");
@@ -1356,6 +1422,15 @@ window.__ModuleLoader__.load({
           }, t("spine.scopeAll"))),
         swState ? masterSwitch : null,
         h("span", { className: "sp-topbar-sub" }, subtitle),
+        // 版本号不进收起状态的文档卡：要看版本得先展开「文档与出处」，实测没人会去展开。
+        // 没有版本（老宿主 / 读不到 package.json）就不画这块，不留一个空的 v。
+        versionValue
+          ? h("span", {
+            className: "sp-version",
+            "data-version": versionValue,
+            title: t("spine.version") + " " + versionValue,
+          }, "v" + versionValue)
+          : null,
         h("button", {
           className: "sp-btn sp-topbar-reload",
           title: t("spine.reloadHint"),
@@ -1491,7 +1566,7 @@ window.__ModuleLoader__.load({
             h("span", null, t("spine.colSeq")),
             h("span", { className: "sp-num" }, t("spine.colTokens")),
             h("span", null, t("spine.colModel")),
-            h("span", { className: "sp-num" }, t("spine.colTime")),
+            h("span", { className: "sp-num sp-cell-time" }, t("spine.colTime")),
             h("span", { className: "sp-num" }, t("spine.colFiles")),
             h("span", null, "")),
           h("div", { className: "sp-scroll" + (timelineAll ? " sp-scroll-tall" : "") },
@@ -1531,6 +1606,53 @@ window.__ModuleLoader__.load({
       // 只有桥真的连上了（ready）才接管；连不上就退回宿主设置表单，
       // 并保留滑块可用——不能因为宿主还没重启就把整片控件锁死。
       const bridged = Boolean(store && cfg && cfg.status === "ready");
+      /**
+       * 大刀归纳器的两选一：官方模型 / 本地脚本。
+       *
+       * 不做成滑块，因为它不是连续量；也不塞进预设档——预设是「刀法策略」，
+       * 而这个选项会直接决定一次大刀花不花钱，得让人自己点。
+       * 和别的旋钮一样只写草稿，点了保存才落盘。
+       */
+      const choiceGroup = (name) => {
+        const now = currentOf(name);
+        const picked = Number(now) > 0 ? 1 : 0;
+        const fixed = Boolean(cfg && cfg.fixed && Object.prototype.hasOwnProperty.call(cfg.fixed, name));
+        // 和旋钮同一套判定：桥的草稿，或宿主表单上已改未存，都算「改了还没保存」。
+        const field = model && typeof model.field === "function"
+          ? (() => { try { return model.field(name) || {}; } catch { return {}; } })()
+          : {};
+        const dirty = Boolean(cfg && (cfg.draft && Object.prototype.hasOwnProperty.call(cfg.draft, name)
+          || (store && typeof store.dirty === "function" && store.dirty(name))))
+          || Boolean(field.overridden);
+        const options = [
+          { value: 0, label: t("spine.scriptModel"), hint: t("spine.scriptModelHint"), key: "model" },
+          { value: 1, label: t("spine.scriptLocal"), hint: t("spine.scriptLocalHint"), key: "local" },
+        ];
+        return h("div", { className: "sp-field sp-choice" },
+          h("div", { className: "sp-field-head" },
+            h("span", { className: "sp-field-title" }, t("spine.scriptChoiceTitle")),
+            dirty ? h("span", { className: "sp-tag" }, t("spine.scriptDraft")) : null,
+            fixed ? h("span", { className: "sp-tag sp-tag-warn", title: t("spine.cfgFixed") }, t("spine.fixedTag")) : null),
+          h("div", { className: "sp-choice-row" }, options.map((option) => h("button", {
+            key: option.key,
+            type: "button",
+            // 不用 sp-btn-primary：那是「保存」的样式钩子，面板和测试都按它找保存按钮。
+            className: "sp-btn sp-choice-btn" + (picked === option.value ? " sp-choice-on" : ""),
+            "data-choice": name,
+            "data-value": String(option.value),
+            title: option.hint,
+            disabled: !writable || saving,
+            onClick: () => {
+              if (bridged) store.edit(name, String(option.value));
+              else actions.edit?.(name, String(option.value));
+              bump();
+            },
+          }, option.label))),
+          h("div", { className: "sp-choice-hint" }, options[picked].hint),
+          h("div", { className: "sp-choice-now" },
+            t("spine.scriptActive") + " · ",
+            h("b", null, options[picked].label)));
+      };
       const knob = (name) => {
         const label = LABELS[name] || [name, ""];
         const field = model && typeof model.field === "function"
@@ -1585,9 +1707,12 @@ window.__ModuleLoader__.load({
         bump();
       };
       const presetCustom = () => {
-        // 「自定义」不写任何东西：草稿里现在填的就是自定义档，点它只是回到未保存状态。
-        if (bridged) store.discard();
-        else actions.discard?.();
+        // 点「自定义档」＝切回你自己调的那套值，不是清空。没有手工记录时才退回生效值。
+        const restored = bridged && typeof store.applyCustom === "function" ? store.applyCustom() : false;
+        if (!restored) {
+          if (bridged) store.discard();
+          else actions.discard?.();
+        }
         bump();
       };
       // 只按现在这套值去对预设：对上哪档就高亮哪档，对不上就是自定义。
@@ -1793,6 +1918,7 @@ window.__ModuleLoader__.load({
               },
             })
             : null,
+          group.choice ? choiceGroup(group.choice) : null,
           h("div", { className: "sp-fields" }, group.keys.map(knob)))));
       const docsCard = h("details", { className: "sp-details sp-card" },
         h("summary", { className: "sp-card-title" }, t("spine.docs"),
@@ -2127,7 +2253,7 @@ window.__ModuleLoader__.load({
       // 只是给本地测试用的出口；加载器只认 inject / apply。
       __test: {
         summarizeCuts, barSegments, kindBars, kindOfCut, shareText, readProjection,
-        fmtTokens, fmtClock, renderPanel, SpinePanel, SPINE_CSS,
+        fmtTokens, fmtClock, fmtRowTime, renderPanel, SpinePanel, SPINE_CSS,
         KNIFE_COLOR, KNOB_GROUPS, MID_ON, PRESETS, KNOB_META, knobRange, fmtKnobValue, MidSwitch,
         shortPath, DocRow, openHostPath, setBridgeCtx, createSettingsStore, postBridge,
         cutBars, CutRow, Chevron,

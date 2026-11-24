@@ -140,18 +140,21 @@ function normalizeScopes(raw) {
   return scopes;
 }
 
-let cache = { file: "", mtimeMs: -1, state: emptyState() };
+// 键用「纳秒 mtime + 字节数」：只比 mtimeMs 时，同一毫秒内的改写（坏文件被整份覆盖、
+// 连续两次保存）会命中旧缓存，面板和引擎都会读到上一版档位。
+let cache = { file: "", key: "", state: emptyState() };
 
 export function readPresets() {
   try {
     const file = presetsFilePath();
     if (!existsSync(file)) return emptyState();
-    const stat = statSync(file);
-    if (cache.file === file && cache.mtimeMs === stat.mtimeMs) return cache.state;
+    const stat = statSync(file, { bigint: true });
+    const key = `${stat.mtimeNs}:${stat.size}`;
+    if (cache.file === file && cache.key === key) return cache.state;
     let parsed = null;
     try { parsed = JSON.parse(readFileSync(file, "utf8")); } catch { parsed = null; }
     const state = { version: 1, scopes: normalizeScopes(parsed?.scopes) };
-    cache = { file, mtimeMs: stat.mtimeMs, state };
+    cache = { file, key, state };
     return state;
   } catch {
     return emptyState();
@@ -165,10 +168,10 @@ async function writeState(state) {
   await writeFile(temp, body, { mode: 0o600 });
   await rename(temp, file);
   try {
-    const stat = statSync(file);
-    cache = { file, mtimeMs: stat.mtimeMs, state };
+    const stat = statSync(file, { bigint: true });
+    cache = { file, key: `${stat.mtimeNs}:${stat.size}`, state };
   } catch {
-    cache = { file: "", mtimeMs: -1, state };
+    cache = { file: "", key: "", state };
   }
   return state;
 }

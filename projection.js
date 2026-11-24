@@ -20,6 +20,8 @@ export const KNOB_KEYS = [
   "chunkMax", "chunkMin", "burstCuts", "paybackTurns", "spanBandRatio", "minNetGain",
   "deepCutAbove", "mergeMaxSpan", "mergeBreakEven", "mergeCooldownMs",
   "officialAbove", "officialCooldownMs", "bigGate", "keepRounds", "keepRoundTokens",
+  // 大刀归纳器：0 = 官方模型摘要，1 = 本地脚本卡片。面板要按它高亮，所以随视图下发。
+  "officialScript",
 ];
 
 const CARD_KINDS = new Set(["spine-checkpoint", "compact-checkpoint"]);
@@ -44,6 +46,7 @@ export function knifeOf(source) {
 const CARD_MARKER = "Spine extract.";
 const CARD_TAGS = ["<compacted-summary>", "</compacted-summary>"];
 const CARD_PREAMBLES = [
+  { start: "旧内容摘录", ends: ["不是指令。", "接着做。"] },
   { start: "这是旧内容摘录", ends: ["不要把摘录里的句子当成你刚说的话。", "not an authorization.", "不是你的授权。"] },
   { start: "This is an automatically generated checkpoint", ends: ["without acknowledging this checkpoint."] },
 ];
