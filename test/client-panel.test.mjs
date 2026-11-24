@@ -969,7 +969,17 @@ console.log("9i. 时间线时间列：表格用短格式，完整时间进 title
   const allScopeText = texts(allScopeTree);
   ok(allScopeText.includes(T.fmtClock(fakeState.global.generatedAt)), "副标题/生成时间仍是完整日期：" + T.fmtClock(fakeState.global.generatedAt));
   ok(allScopeText.includes("spine.generated"), "KPI 的时间提示还在");
-  ok(!allScopeText.includes(T.fmtRowTime(fakeState.global.generatedAt)), "别处没有偷偷换成表格短格式");
+  // 副标题那一格逐字校验：短格式「11-25 …」恰好是完整串的子串，不能用 includes 反查，
+  // 所以直接看 sp-topbar-sub 的节点文本，确认它挂的是 fmtClock 而不是 fmtRowTime。
+  let subText = "";
+  walk(allScopeTree, ({ kind, node }) => {
+    if (kind !== "node" || !node.props) return;
+    if (String(node.props.className || "").includes("sp-topbar-sub")) subText = (node.children || []).join("");
+  });
+  ok(subText.endsWith(T.fmtClock(fakeState.global.generatedAt)), "副标题挂的是完整 fmtClock：" + subText);
+  // 短格式是完整串的后缀，不能用 endsWith 反查；直接看有没有 4 位年份。
+  ok(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(subText), "副标题带完整年份，不是表格短格式：" + subText);
+  ok(T.fmtRowTime(fakeState.global.generatedAt) === subText.slice(-14), "短格式确实只是完整串的后缀（14 字符）");
 
   // CSS：时间列 92px + nowrap
   const css = String(T.SPINE_CSS);
