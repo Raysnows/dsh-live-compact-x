@@ -209,5 +209,20 @@ console.log("5. 自定义档：本会话 / 本工作区 / 全部会话");
   ok(del.status === 400, "删不存在的档 400");
 }
 
+console.log("8. 脱敏诊断（op=diag）");
+{
+  const diag = (await call({ op: "diag", sid: "sess-a" })).json;
+  ok(diag.ok === true && diag.value && typeof diag.value.text === "string", "返回诊断文本 " + JSON.stringify(diag).slice(0, 200));
+  ok(diag.value.text.includes("插件诊断"), "有标题");
+  ok(diag.value.text.length <= 8000, "长度受限：" + diag.value.text.length);
+  ok(diag.value.url.startsWith("https://github.com/Raysnows/dsh-live-compact-x/issues/new?"), "给出新建 issue 链接");
+  ok(diag.value.url.includes("body="), "链接带预填 body");
+  ok(!/C:\\Users\\|\\AppData\\|\/home\//.test(diag.value.text), "不含本机家目录");
+  ok(!/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(diag.value.text), "会话 id 被抹掉");
+  ok(!/(sk-|Bearer )/.test(diag.value.text), "不含 token");
+  ok(diag.value.text.includes("生效值"), "带生效设置");
+  ok(diag.value.text.includes("最近决策"), "带决策摘要");
+}
+
 console.log("\n通过 " + pass + " / 失败 " + fail);
 process.exit(fail ? 1 : 0);

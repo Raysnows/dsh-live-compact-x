@@ -9,12 +9,111 @@
  * 安全：同源 + 回环地址 + 宿主自己的 requestRejection（有就先用它）。
  * 拒绝跨站请求，避免被网页当 confused deputy 使。
  */
-import { readFileSync } from "node:fs";
-import { describeSettings, writeOverrides } from "./settings.js";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { describeSettings, settingsFilePath, writeOverrides } from "./settings.js";
+import { DECISIONS_NAME, shadowDirectory } from "./shadow.js";
 import { setSwitchState, switchSnapshot } from "./switch.js";
 import { activePresetFor, applyPreset, deletePreset, presetLayerFor, presetsSnapshot, savePreset } from "./presets.js";
 
 export const BRIDGE_PREFIX = "/api/dsh-live-compact-x-settings";
+
+const ISSUE_URL = "https://github.com/Raysnows/dsh-live-compact-x/issues/new";
+
+/** 诊断报告要能被贴到公开 issue：先把本机标识抹掉，再截断。 */
+function sanitizeReport(text, home = homedir()) {
+  let out = String(text || "");
+  if (home) out = out.split(home).join("~");
+  out = out.replace(/[A-Za-z]:\\+Users\\+[^\\\s"']+/gi, "~");
+  out = out.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<id>");
+  out = out.replace(/\b(?:sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{8,}|[A-Za-z0-9_-]{32,})\b/g, "<secret>");
+  out = out.replace(/[A-Za-z]:\\[^\s"']+/g, (path) => "<path>/" + String(path).split(/[\\/]/).pop());
+  return out;
+}
+
+function readTailLines(file, limit = 30, maxBytes = 96 * 1024) {
+  try {
+    const stat = statSync(file);
+    const start = Math.max(0, stat.size - maxBytes);
+    const text = readFileSync(file, "utf8").slice(start);
+    const lines = text.split("\n").filter(Boolean);
+    if (start > 0 && lines.length) lines.shift();
+    return lines.slice(-limit);
+  } catch {
+    return [];
+  }
+}
+
+function directoryFootprint(dir) {
+  const out = { files: 0, bytes: 0 };
+  let entries = [];
+  try { entries = readdirSync(dir, { recursive: true, withFileTypes: true }); } catch { return out; }
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    try {
+      out.files += 1;
+      out.bytes += statSync(join(entry.parentPath || entry.path || dir, entry.name)).size;
+    } catch {}
+  }
+  return out;
+}
+
+/**
+ * 面板「提交问题日志」用的脱敏诊断：版本、设置、开关、最近决策、目录体量。
+ * 只读、不写盘；结果同时给「复制」和「去 issue」两个按钮。
+ */
+function buildDiagnostic(sid, getConfig) {
+  const settings = describeSettings(getConfig(), presetLayerFor(sid));
+  const numbers = Object.fromEntries(Object.entries(settings.effective || {})
+    .filter(([, value]) => typeof value === "number")
+    .map(([key, value]) => [key, value]));
+  const dir = shadowDirectory();
+  const shadow = directoryFootprint(dir);
+  const decisions = readTailLines(join(dir, DECISIONS_NAME), 30)
+    .map((line) => {
+      try {
+        const record = JSON.parse(line);
+        return [
+          String(record.ts || ""),
+          record.sid ? "<id>" : "",
+          record.phase || "",
+          record.result || "",
+          record.reason || "",
+          Number.isFinite(record.totalTokens) ? "total=" + record.totalTokens : "",
+          Number.isFinite(record.conversationTokens) ? "conv=" + record.conversationTokens : "",
+          Number.isFinite(record.systemOverhead) ? "sys=" + record.systemOverhead : "",
+          record.summarizer ? "summarizer=" + record.summarizer : "",
+        ].filter(Boolean).join(" ");
+      } catch {
+        return "(unparsable decision line)";
+      }
+    });
+  const lines = [
+    "### 插件诊断（自动脱敏）",
+    "- 插件版本：" + (settings.file ? "" : "") + versionText(),
+    "- 宿主平台：" + process.platform + " / node " + process.version,
+    "- 设置文件：" + (settings.file ? "~/" + String(settings.file).split(/[\\/]/).slice(-2).join("/") : "(none)"),
+    "- 生效值：" + JSON.stringify(numbers),
+    "- 总开关：" + JSON.stringify(switchSnapshot(sid)),
+    "- 生效档：" + JSON.stringify(presetsSnapshot(sid).layer || null),
+    "- shadow 目录：" + shadow.files + " 个文件 / " + (shadow.bytes / 1048576).toFixed(1) + "MB",
+    "- 最近决策（最多 30 条）：",
+    ...decisions.map((line) => "  - " + line),
+  ];
+  const text = sanitizeReport(lines.join("\n")).slice(0, 8000);
+  const body = sanitizeReport("请描述现象与复现步骤（已自动附上脱敏诊断，可直接编辑删改）：\n\n" + text).slice(0, 6000);
+  const url = ISSUE_URL + "?title=" + encodeURIComponent("[bug] ") + "&body=" + encodeURIComponent(body);
+  return { text, url };
+}
+
+function versionText() {
+  try {
+    return String(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version || "");
+  } catch {
+    return "";
+  }
+}
 
 const MAX_BODY_BYTES = 64 * 1024;
 const DOC_MAX_CHARS = 40000;
@@ -185,6 +284,11 @@ export function installSettingsBridge(ctx, options = {}) {
           return;
         }
         writeJson(res, 200, { ok: true, value: { ...describeAll(body.sid), savedAt: Date.now() } });
+        return;
+      }
+      if (body.op === "diag") {
+        // 只读诊断：面板拿去复制，或直接拼成 GitHub issue 链接。
+        writeJson(res, 200, { ok: true, value: buildDiagnostic(body.sid, getConfig) });
         return;
       }
       if (body.op === "doc") {

@@ -1264,5 +1264,25 @@ console.log("N. 自定义档保留手工调过的那套值");
   ok(fresh.getSnapshot().custom.minTokens === "21000", "新 store 各自记各自的");
 }
 
+console.log("9j. 调试卡可以提交脱敏问题日志");
+{
+  const diagNodes = (tree) => {
+    const out = [];
+    walk(tree, ({ kind, node }) => { if (kind === "node" && node.props?.["data-diag"]) out.push(node); });
+    return out;
+  };
+  const tree = T.renderPanel({ t: (k) => k, model, actions }, fakeState, "session", () => {}, () => {}, null, { cfg: { status: "ready", draft: {}, effective: fakeState.settings, defaults: {}, diagUrl: "https://github.com/x/issues/new" } });
+  const nodes = diagNodes(tree);
+  ok(nodes.length === 2, "两个按钮：复制 / 去 issue（" + nodes.length + "）");
+  ok(nodes.some((n) => n.props["data-diag"] === "copy" && n.props.onClick), "复制按钮可点");
+  const issue = nodes.find((n) => n.props["data-diag"] === "issue");
+  ok(Boolean(issue) && issue.props.disabled === false, "有诊断链接时 issue 按钮可用");
+  const noUrl = T.renderPanel({ t: (k) => k, model, actions }, fakeState, "session", () => {}, () => {}, null, { cfg: { status: "ready", draft: {}, effective: fakeState.settings, defaults: {}, diagUrl: "" } });
+  const blocked = diagNodes(noUrl).find((n) => n.props["data-diag"] === "issue");
+  ok(Boolean(blocked) && blocked.props.disabled === true, "还没有诊断链接时置灰");
+  const css = T.SPINE_CSS;
+  ok(typeof css === "string" && css.length > 0, "样式存在");
+}
+
 console.log("\n通过 " + pass + " / 失败 " + fail);
 process.exit(fail ? 1 : 0);

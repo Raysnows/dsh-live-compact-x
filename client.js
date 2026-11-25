@@ -57,7 +57,7 @@ window.__ModuleLoader__.load({
       mergeMaxSpan: ["中刀窗口", "chunkMax × 它；默认 4 = 128k"],
       mergeBreakEven: ["中刀回本倍数", "一次性重算 / 净赚 超过它就不切"],
       mergeCooldownMs: ["中刀冷却（毫秒）", "两刀中刀之间的最小间隔"],
-      officialAbove: ["大刀启用线", "超过它且没有可切段时请官方压缩"],
+      officialAbove: ["大刀启用线", "超过它且没有可切段时让大刀接手（模型或脚本）"],
       officialCooldownMs: ["大刀冷却（毫秒）", "两次大压缩的最小间隔"],
       officialScript: ["大刀归纳器", "0 = 官方模型摘要，1 = 本地脚本卡片"],
       paybackTurns: ["小刀回本轮数", "重算超过 净赚×它 就不切"],
@@ -173,6 +173,8 @@ window.__ModuleLoader__.load({
         doc: null, docLoading: false, docError: "",
         sw: null, swSaving: false, swSavedAt: 0, swError: "", sid: "",
         presets: null, presetSaving: false, presetError: "",
+        // 脱敏诊断：贴 issue 用。text 进剪贴板，url 直接打开新建 issue。
+        diagLoading: false, diagText: "", diagUrl: "", diagError: "",
         // 上一次手工改出来的那套值：切回「自定义档」时用它恢复，而不是把草稿清掉。
         custom: null,
       };
@@ -283,6 +285,25 @@ window.__ModuleLoader__.load({
         },
         applyPreset(scope, id) { return store.preset("preset-apply", { scope, id: id || "" }); },
         deletePreset(scope, id) { return store.preset("preset-delete", { scope, id }); },
+        /**
+         * 取脱敏诊断：服务端只读、已抹掉家目录 / 用户名 / 会话 id / token / 绝对路径。
+         * 成功就顺手复制，附一个新建 issue 的链接（对方点开即可粘贴提交）。
+         */
+        async diag(sid) {
+          if (snapshot.diagLoading) return false;
+          publish({ diagLoading: true, diagError: "" });
+          try {
+            const payload = await postBridge("diag", { op: "diag", sid: sid || snapshot.sid });
+            if (!payload.ok) throw new Error(payload.message || payload.code || "诊断不可用");
+            const value = payload.value || {};
+            publish({ diagLoading: false, diagText: value.text || "", diagUrl: value.url || "", diagError: "" });
+            copyText(value.text || "");
+            return true;
+          } catch (error) {
+            publish({ diagLoading: false, diagError: String(error && error.message ? error.message : error) });
+            return false;
+          }
+        },
         async openDoc(which) {
           if (snapshot.doc && snapshot.doc.which === which) { publish({ doc: null, docError: "" }); return; }
           publish({ docLoading: true, docError: "" });
@@ -424,7 +445,7 @@ window.__ModuleLoader__.load({
       "spine.knifeShortBig": "大刀",
       "spine.knifeShortOfficial": "官方",
       "spine.knifeShortPlugin": "旧卡",
-      "spine.knifeBigHint": "本插件请官方摘要接手，算我们的刀",
+      "spine.knifeBigHint": "本插件让大刀接手（官方模型或本地脚本），算我们的刀",
       "spine.knifeOfficialHint": "插件接管前后的原生压缩",
       "spine.knifeStats": "刀法统计",
       "spine.colKnife": "刀法",
@@ -432,16 +453,21 @@ window.__ModuleLoader__.load({
       "spine.colSaved": "切掉",
       "spine.colShare": "占比",
       "spine.colAvg": "平均",
-      "spine.knifeNote": "小刀、中刀、大刀都是本插件切的（大刀借用官方摘要）；官方 = 插件接管之前或让位时的原生压缩，旧卡片 = 早期没记刀名的卡。",
+      "spine.knifeNote": "小刀、中刀、大刀都是本插件切的（大刀默认借官方摘要，也可切成本地脚本）；官方 = 插件接管之前或让位时的原生压缩，旧卡片 = 早期没记刀名的卡。",
       "spine.experimental": "实验性",
       "spine.enableMid": "启用中刀（合并整张卡片，默认关闭）",
       "spine.groupSmallHint": "抢在官方压缩之前先切尾巴，一行内容都不丢。",
       "spine.groupMidHint": "上下文很大时，把连续的老卡片并成一张；不省钱就不动。",
-      "spine.groupBigHint": "前两把刀都切不动时，才请官方压缩接手。",
+      "spine.groupBigHint": "前两把刀都切不动时，才让大刀接手：默认请官方模型归纳，也可切成零模型调用的本地脚本。",
       "spine.scriptChoiceTitle": "大刀怎么归纳",
       "spine.scriptModel": "官方模型",
       "spine.scriptLocal": "本地脚本",
       "spine.scriptModelHint": "用官方模型把整段归纳成摘要：更连贯、更会取舍，但会多发一次模型请求，有 LLM 成本。",
+      "spine.diagTitle": "提交问题日志",
+      "spine.diagCopy": "复制脱敏诊断",
+      "spine.diagIssue": "去 GitHub 提 issue",
+      "spine.diagHint": "诊断只读本机日志，已自动抹掉家目录、用户名、会话 id、token 与绝对路径；复制后可自行删改再贴。",
+      "spine.diagLoading": "收集中…",
       "spine.scriptLocalHint": "用本地脚本按规则摘录同一段：零模型调用、可按 seq 回读核对；归纳能力弱于模型，卡片不完整时会拒绝，不会偷偷改用模型。",
       "spine.scriptActive": "当前",
       "spine.scriptDraft": "改了要保存才生效",
@@ -615,11 +641,16 @@ window.__ModuleLoader__.load({
       "spine.knifeShortBig": "big",
       "spine.knifeShortOfficial": "official",
       "spine.knifeShortPlugin": "legacy",
-      "spine.knifeBigHint": "The plugin asked the official summarizer to take over",
+      "spine.knifeBigHint": "This plugin hands the span to the big cut (official model or local script)",
       "spine.scriptChoiceTitle": "How the big cut summarizes",
       "spine.scriptModel": "Official model",
       "spine.scriptLocal": "Local script",
       "spine.scriptModelHint": "The official model writes a coherent summary and selects what matters, but it makes one extra LLM request.",
+      "spine.diagTitle": "Report a problem",
+      "spine.diagCopy": "Copy sanitized diagnostics",
+      "spine.diagIssue": "Open a GitHub issue",
+      "spine.diagHint": "Diagnostics are read-only and sanitized: home directory, user name, session ids, tokens and absolute paths are stripped. Edit before posting.",
+      "spine.diagLoading": "Collecting…",
       "spine.scriptLocalHint": "A local script extracts the same span with zero model calls and seq-based recall. It is less semantic; an incomplete card is refused and never falls back to the model silently.",
       "spine.scriptActive": "Active",
       "spine.scriptDraft": "Saved only after you save",
@@ -635,7 +666,7 @@ window.__ModuleLoader__.load({
       "spine.enableMid": "Enable the merge cut (joins whole cards, off by default)",
       "spine.groupSmallHint": "Cuts the tail before official compaction, dropping nothing.",
       "spine.groupMidHint": "When the context is huge, joins continuous old cards; skips unless it pays off.",
-      "spine.groupBigHint": "Only when the first two knives cannot cut, the official summary takes over.",
+      "spine.groupBigHint": "Only when the first two knives cannot cut does the big cut take over: the official model by default, or a zero-LLM local script.",
       "spine.docs": "Docs",
       "spine.docsHint": "open or copy a path",
       "spine.docsReadme": "README",
@@ -1376,6 +1407,8 @@ window.__ModuleLoader__.load({
         ? (() => { try { return model.shell() || {}; } catch { return null; } })()
         : null;
       const all = scope === "all";
+      // 诊断按「当前这条会话」取：全部会话视图下也要能报问题，就用面板自己的 sid。
+      const sidForDiag = state && typeof state.sid === "string" ? state.sid : "";
       const timelineAll = Boolean(ui && ui.timelineAll);
       const global = (state && state.global) || {};
       const sessionCuts = Array.isArray(state && state.cuts) ? state.cuts : [];
@@ -1981,7 +2014,25 @@ window.__ModuleLoader__.load({
                 h("span", null, ((LABELS[name] || [name])[0])),
                 h("span", null, off ? t("spine.offState") : fmtKnobValue(name, settings[name])));
             })
-            : h("div", { className: "sp-dim" }, "—"))));
+            : h("div", { className: "sp-dim" }, "—")),
+          // 报问题：诊断已经在本机脱敏（家目录、用户名、会话 id、token、绝对路径），
+          // 复制走剪贴板，另一个按钮拼 GitHub issue 链接，对方点开就能贴。
+          h("div", { className: "sp-dbg-head" },
+            h("span", null, t("spine.diagTitle")),
+            h("button", {
+              className: "sp-btn",
+              "data-diag": "copy",
+              disabled: Boolean(cfg && cfg.diagLoading),
+              onClick: () => { if (store) void store.diag(sidForDiag); },
+            }, cfg && cfg.diagLoading ? t("spine.diagLoading") : t("spine.diagCopy")),
+            h("button", {
+              className: "sp-btn",
+              "data-diag": "issue",
+              disabled: !(cfg && cfg.diagUrl) || Boolean(cfg && cfg.diagLoading),
+              onClick: () => { if (cfg && cfg.diagUrl) window.open(cfg.diagUrl, "_blank", "noopener"); },
+            }, t("spine.diagIssue"))),
+          h("div", { className: "sp-field-hint" }, t("spine.diagHint")),
+          cfg && cfg.diagError ? h("div", { className: "sp-channel sp-channel-bad" }, cfg.diagError) : null));
       return h("div", { className: "sp-root", ref: rootRef, "data-spine-cover": "", "data-conversation-composer-overlay": "" },
         topbar,
         h("div", { className: "sp-grid" }, kpis),
