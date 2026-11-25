@@ -19,7 +19,10 @@ export const PRESET_ENGINE_CONFIG = Object.freeze(engineConfig());
 export function activeCompactionPeers(ctx) {
   const peers = [];
   if (process.env.SPINE_STAND_DOWN === "1") peers.push("SPINE_STAND_DOWN");
-  const registry = ctx?.registry;
+  // rc.12 的 context 是 Proxy：读未登记的字符串属性（registry 就是）会直接抛错，
+  // 所以这次读取必须自己包住，不能指望外面的 try 之外还能安全。
+  let registry;
+  try { registry = ctx?.registry; } catch { return peers; }
   if (!registry || typeof registry.values !== "function") return peers;
   try {
     for (const runtime of registry.values()) {
@@ -36,6 +39,27 @@ export function activeCompactionPeers(ctx) {
   return peers;
 }
 
+/**
+ * 取根上下文。Cordis 4.0.0-rc.12 起 `ctx.root` 这个字符串属性不再存在——它挂在
+ * `Symbol.for("cordis.root")` 上，而且 context 是 Proxy，读未登记的字符串属性会
+ * 直接抛 `cannot get property "root" without inject`，`?.` 短路不了。
+ * 所以先读 symbol，再退回旧写法，且两条路都包在 try 里。
+ */
+const ROOT_SYMBOL = Symbol.for("cordis.root");
+
+export function rootContext(ctx) {
+  if (!ctx) return ctx;
+  try {
+    const fromSymbol = ctx[ROOT_SYMBOL];
+    if (fromSymbol) return fromSymbol;
+  } catch {}
+  try {
+    const legacy = ctx.root;
+    if (legacy) return legacy;
+  } catch {}
+  return ctx;
+}
+
 export function compactionStandDown(ctx) {
   return activeCompactionPeers(ctx).length > 0;
 }
@@ -43,7 +67,7 @@ export function compactionStandDown(ctx) {
 export function warnCompactionStandDown(ctx, logger = ctx?.logger) {
   const peers = activeCompactionPeers(ctx);
   if (!peers.length) return peers;
-  const root = ctx?.root || ctx;
+  const root = rootContext(ctx);
   const key = peers.join(",");
   if (root && standDownNotices.get(root) === key) return peers;
   if (root) standDownNotices.set(root, key);
@@ -194,7 +218,8 @@ function entryDepth(ctx) {
 
 export function installPresetGate(ctx, config = {}, { legacy = false } = {}) {
   const depth = entryDepth(ctx);
-  const previous = installedGates.get(ctx.root);
+  const key = rootContext(ctx);
+  const previous = installedGates.get(key);
   if (previous) {
     if (legacy && !previous.legacy) return;
     if (legacy === previous.legacy && (depth > previous.depth || (depth === previous.depth && previous.active))) return;
@@ -202,7 +227,7 @@ export function installPresetGate(ctx, config = {}, { legacy = false } = {}) {
     previous.disposeListener?.();
   }
   const gate = { depth, legacy, active: true };
-  installedGates.set(ctx.root, gate);
+  installedGates.set(key, gate);
   ctx.effect(() => () => { gate.active = false; });
   const enabled = () => {
     const value = config.takeoverPresets ?? true;

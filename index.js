@@ -2354,7 +2354,13 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
   }
 
   hostService(name) {
-    const nodes = [this.ctx, this.ctx?.root, this.ctx?.parent];
+    // rc.12：root 在 symbol 上；字符串 ctx.root / ctx.parent 会抛错（Proxy 的 get trap）。
+    const rootOf = (node) => {
+      try { const hit = node?.[Symbol.for("cordis.root")]; if (hit) return hit; } catch {}
+      try { return node?.root; } catch { return undefined; }
+    };
+    const parentOf = (node) => { try { return node?.parent; } catch { return undefined; } };
+    const nodes = [this.ctx, rootOf(this.ctx), parentOf(this.ctx)];
     for (const node of nodes) {
       if (!node || typeof node.get !== "function") continue;
       try {

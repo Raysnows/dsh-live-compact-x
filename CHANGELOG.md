@@ -1,3 +1,14 @@
+# 1.3.22（2026-11-25 修 Cordis rc.12 激活崩溃 + 许可证）
+
+> 仓库收到 issue #1（zhangzunfu）：DSH 0.2.3-alpha.2 / Cordis 4.0.0-rc.12 下插件**根本起不来**，而 `cordis.patch.yml` 已经把官方 `compaction-basic` 关掉，结果整个 profile **没有任何压缩引擎**，只在启用响应里留一行 warning。报告里给的行号与根因都对得上，这里逐条修掉。
+
+- **`ctx.root` 在 rc.12 会抛错**：root context 改挂在 `Symbol.for("cordis.root")` 上，且 context 是 Proxy，读未登记的字符串属性会抛 `cannot get property "root" without inject`——`ctx?.root` 的短路救不了。`gate.js` 新增 `rootContext()`：先读 symbol，再退回旧字符串写法，两条路都包 try；`installPresetGate` 的 Map 键改用它。
+- **`ctx.registry` 同样会抛**：`activeCompactionPeers()` 原来在 try 外面读这个属性，rc.12 下第一行就炸（也就是 issue 里最先崩的位置）。现在读取本身也包住，读不到就只保留 `SPINE_STAND_DOWN` 的结论。
+- **`hostService()` 的父链**：`this.ctx?.root / ?.parent` 换成 symbol 优先、字符串回退、全程 try；rc.12 下不再因探测宿主服务而抛。
+- **许可证**：LICENSE 的版权行原来带 `(original dsh-live-compact)` / `(fork modifications)` 括注，GitHub 的 licensee 认不出标准 MIT，仓库页显示 `NOASSERTION`。改成标准两行版权声明，SPEC 文本一字不改。
+- **回归测试** `test/root-compat.test.mjs` 8 条：用 Proxy 复刻 rc.12 的 get trap（读未登记字符串属性即抛错），覆盖 symbol 取值、无 symbol 回退、旧宿主字符串兼容、以及 `warnCompactionStandDown` 全链路不抛。
+- 仍未做（issue 里第 1 条健壮性建议）：**激活失败时自动恢复官方压缩**（fail-open）。这需要改 `cordis.patch.yml` 的接管策略或做激活后自检回滚，属于行为变更，留到单独版本验证。
+
 # 1.3.21（2026-11-25 时间线不再截断）
 
 - **时间线时间列**：1.3.20 把时间换成完整年月日后，表格那一列只有 54px，被截成 `2026-11…`。现在时间线行改用 `MM-DD HH:mm:ss`（如 `11-25 00:15:33`），列宽 54px → 92px 并禁止换行，完整 `YYYY-MM-DD HH:mm:ss` 放进悬停提示；KPI、最近一刀、保存时间、卡片截断时间仍是完整日期。
