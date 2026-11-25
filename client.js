@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       paybackTurns: ["小刀回本轮数", "重算超过 净赚×它 就不切"],
       spanBandRatio: ["动态刀长比例", "单刀上限 = 上下文 × 它"],
       keepRounds: ["保留原文轮数", "最近几轮留原文"],
-      keepRoundTokens: ["收尾停止线", "降到这个 token 就不切"],
+      keepRoundTokens: ["收尾停止线", "降到这个 token 就不切；不得低于小刀一刀上限"],
       bigGate: ["绝对停切线", "超过即不再小切"],
       chunkMax: ["一刀上限", "小刀一次最多切多少"],
       chunkMin: ["一刀下限", "不够就不切"],
@@ -83,7 +83,9 @@ window.__ModuleLoader__.load({
       keepRounds: { min: 1, max: 10, usual: [2, 5], step: 1 },
       chunkMin: { min: 1000, max: 20000, usual: [1000, 4000], step: 100 },
       chunkMax: { min: 8000, max: 128000, usual: [16000, 48000], step: 1000 },
-      keepRoundTokens: { min: 8000, max: 200000, usual: [16000, 48000], step: 1000 },
+      // 收尾停止线 = 「切到这么小就停」。它必须站在小刀一刀上限（chunkMax）之上：
+      // 比一刀还低，等于把同一刀拆成两刀，所谓大刀只是重复小刀。下限因此跟 chunkMax 的默认值齐平。
+      keepRoundTokens: { min: 32000, max: 200000, usual: [48000, 96000], step: 1000 },
       bigGate: { min: 100000, max: 1000000, usual: [400000, 650000], step: 50000 },
       cooldownMs: { min: 0, max: 600000, usual: [0, 600000], step: 10000 },
       minNetGain: { min: 500, max: 50000, usual: [2000, 8000], step: 500, off: true, onValue: 3000 },
@@ -110,7 +112,7 @@ window.__ModuleLoader__.load({
         label: "spine.presetRecommended",
         hint: "spine.presetRecommendedHint",
         values: {
-          minTokens: 20000, keepRounds: 3, keepRoundTokens: 32000, chunkMin: 1000, chunkMax: 32000,
+          minTokens: 20000, keepRounds: 3, keepRoundTokens: 48000, chunkMin: 1000, chunkMax: 32000,
           burstCuts: 3, minNetGain: 3000, paybackTurns: 8, spanBandRatio: 0.06,
           officialAbove: 450000, bigGate: 650000,
         },
@@ -120,7 +122,7 @@ window.__ModuleLoader__.load({
         label: "spine.presetSmallFirst",
         hint: "spine.presetSmallFirstHint",
         values: {
-          minTokens: 20000, keepRounds: 3, keepRoundTokens: 32000, chunkMin: 1000, chunkMax: 32000,
+          minTokens: 20000, keepRounds: 3, keepRoundTokens: 48000, chunkMin: 1000, chunkMax: 32000,
           burstCuts: 4, minNetGain: 2000, paybackTurns: 4, spanBandRatio: 0,
           officialAbove: 600000, bigGate: 650000,
         },
@@ -130,7 +132,7 @@ window.__ModuleLoader__.load({
         label: "spine.presetBigFirst",
         hint: "spine.presetBigFirstHint",
         values: {
-          minTokens: 30000, keepRounds: 3, keepRoundTokens: 32000, chunkMin: 2000, chunkMax: 32000,
+          minTokens: 30000, keepRounds: 3, keepRoundTokens: 48000, chunkMin: 2000, chunkMax: 32000,
           burstCuts: 1, minNetGain: 4000, paybackTurns: 10, spanBandRatio: 0.04,
           officialAbove: 200000, bigGate: 650000,
         },
@@ -175,6 +177,8 @@ window.__ModuleLoader__.load({
         presets: null, presetSaving: false, presetError: "",
         // 脱敏诊断：贴 issue 用。text 进剪贴板，url 直接打开新建 issue。
         diagLoading: false, diagText: "", diagUrl: "", diagError: "",
+        // 本版更新：升级后第一眼看改了什么；「知道了」按版本号记在本机。
+        news: null, newsLoading: false, newsError: "",
         // 上一次手工改出来的那套值：切回「自定义档」时用它恢复，而不是把草稿清掉。
         custom: null,
       };
@@ -302,6 +306,21 @@ window.__ModuleLoader__.load({
           } catch (error) {
             publish({ diagLoading: false, diagError: String(error && error.message ? error.message : error) });
             return false;
+          }
+        },
+        /**
+         * 本版更新：只读 CHANGELOG.md 头几段，跨几个版本升级也能一次看完。
+         * 读不到就安静不画，不拿一个空卡占地方。
+         */
+        async loadNews() {
+          if (snapshot.newsLoading || snapshot.news) return;
+          publish({ newsLoading: true, newsError: "" });
+          try {
+            const payload = await postBridge("whatsnew", { op: "whatsnew" });
+            if (!payload.ok) throw new Error(payload.message || payload.code || "读不到更新日志");
+            publish({ newsLoading: false, news: payload.value || { entries: [] } });
+          } catch (error) {
+            publish({ newsLoading: false, newsError: String(error && error.message ? error.message : error) });
           }
         },
         async openDoc(which) {
@@ -475,6 +494,12 @@ window.__ModuleLoader__.load({
       "spine.docsHint": "点开看文档，或复制路径",
       "spine.docsReadme": "README",
       "spine.docsChangelog": "更新记录",
+      "spine.newsTitle": "本版更新",
+      "spine.newsHint": "升级后自动展开一次；点顶栏版本号随时再看",
+      "spine.newsDismiss": "知道了",
+      "spine.newsToggle": "点开看本版更新",
+      "spine.newsOpen": "收起本版更新",
+      "spine.newsCross": "这次是跨版本升级，下面几版都算新内容",
       "spine.docsRepo": "仓库",
       "spine.docsIssues": "反馈",
       "spine.version": "版本",
@@ -671,6 +696,12 @@ window.__ModuleLoader__.load({
       "spine.docsHint": "open or copy a path",
       "spine.docsReadme": "README",
       "spine.docsChangelog": "Changelog",
+      "spine.newsTitle": "What's new",
+      "spine.newsHint": "opens once after an update; click the version pill anytime",
+      "spine.newsDismiss": "Got it",
+      "spine.newsToggle": "open what's new",
+      "spine.newsOpen": "hide what's new",
+      "spine.newsCross": "Several versions behind: every entry below is new",
       "spine.docsRepo": "Repo",
       "spine.docsIssues": "Issues",
       "spine.version": "Version",
@@ -726,7 +757,7 @@ window.__ModuleLoader__.load({
       ".sp-scope-btn[data-on='1']{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);font-weight:600}",
       ".sp-topbar-sub{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
       ".sp-topbar-reload{margin-left:8px;flex:none;font-size:11px;padding:2px 9px}",
-      ".sp-version{flex:none;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:1px 8px;background:var(--dsw-alias-bg-layer-2)}",
+      ".sp-version{flex:none;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;background:transparent;cursor:pointer;font-family:inherit;padding:1px 8px;background:var(--dsw-alias-bg-layer-2)}",
       ".sp-master{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:2px 10px;background:var(--dsw-alias-bg-layer-2);cursor:pointer;user-select:none}",
       ".sp-master-on{color:var(--dsw-alias-label-primary)}",
       ".sp-master:not(.sp-master-on){border-color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-border-l1))}",
@@ -866,6 +897,15 @@ window.__ModuleLoader__.load({
       ".sp-warn-body{font-size:11px;line-height:1.55;color:var(--dsw-alias-label-secondary);margin-bottom:6px}",
       ".sp-warn-actions{display:flex;align-items:center;gap:6px}",
       ".sp-note{margin-top:8px;padding-top:7px;border-top:1px dashed var(--dsw-alias-border-l2);font-size:10.5px;line-height:1.6;color:var(--dsw-alias-label-secondary)}",
+      // 本版更新卡：边框用信息色，一眼区分于普通统计卡；「知道了」跟标题同一行。
+      ".sp-news{border-color:var(--dsw-alias-state-info-primary,#4C8DF6)}",
+      ".sp-news-ok{margin-left:8px;flex:none;font-size:11px;padding:2px 9px}",
+      ".sp-news-item{margin-top:8px}",
+      ".sp-news-head{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dsw-alias-label-secondary);flex-wrap:wrap}",
+      ".sp-news-ver{font-weight:600;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
+      ".sp-news-title{color:var(--dsw-alias-label-primary)}",
+      ".sp-news-list{margin:6px 0 0;padding-left:16px;font-size:11.5px;line-height:1.65;color:var(--dsw-alias-label-secondary)}",
+      ".sp-news-list li{margin-bottom:3px}",
     ].join("\n");
     // 五类刀法：小刀 / 中刀 / 大刀 都是本插件动的手（大刀借用官方摘要），
     // 官方是插件接管前后的原生压缩，旧卡片是我们早期没记刀名的卡。
@@ -1395,6 +1435,60 @@ window.__ModuleLoader__.load({
             open.truncated ? h("div", { className: "sp-docnote" }, t("spine.previewTruncated")) : null)
           : null);
     }
+    /** 「上次读到哪个版本」：只记版本号，别的不存，跨升级一次能看完几版。 */
+    const NEWS_SEEN_KEY = "spine.news-seen";
+    function readSeenVersion() {
+      try { return String(globalThis.localStorage?.getItem(NEWS_SEEN_KEY) || ""); } catch { return ""; }
+    }
+    function writeSeenVersion(version) {
+      try { globalThis.localStorage?.setItem(NEWS_SEEN_KEY, String(version || "")); } catch {}
+    }
+
+    /**
+     * 本版更新卡：升级后第一眼就该知道改了什么。
+     * 只列 CHANGELOG.md 头几段的要点，最多三版；点「知道了」按版本号记在本机，不再重复打扰。
+     */
+    /** 升级后第一次自动展开；展开与否由面板状态管，顶栏版本号随时能再点开。 */
+    function newsShouldAuto(version) {
+      const current = String(version || "").trim();
+      if (!current) return false;
+      return readSeenVersion() !== current;
+    }
+
+    function NewsCard(props) {
+      const { t, news, version, open, onClose } = props;
+      const entries = news && Array.isArray(news.entries) ? news.entries : [];
+      if (!open || !entries.length) return null;
+      const current = String(version || (entries[0] && entries[0].version) || "");
+      const seen = readSeenVersion();
+      const shown = [];
+      for (const entry of entries) {
+        if (!entry || !entry.version) continue;
+        if (seen && entry.version === seen) break;
+        shown.push(entry);
+        if (shown.length >= 3) break;
+      }
+      if (!shown.length) return null;
+      return h("div", { className: "sp-card sp-news", "data-news": current },
+        h("div", { className: "sp-card-title" },
+          t("spine.newsTitle"),
+          h("span", { className: "sp-card-sub" }, t("spine.newsHint")),
+          h("button", {
+            className: "sp-btn sp-news-ok",
+            "data-news-ok": "1",
+            onClick: () => onClose && onClose(current),
+          }, t("spine.newsDismiss"))),
+        shown.length > 1 ? h("div", { className: "sp-field-hint" }, t("spine.newsCross")) : null,
+        shown.map((entry) => h("div", { className: "sp-news-item", key: entry.version },
+          h("div", { className: "sp-news-head" },
+            h("span", { className: "sp-news-ver" }, "v" + entry.version),
+            entry.date ? h("span", { className: "sp-news-date" }, entry.date) : null,
+            entry.title ? h("span", { className: "sp-news-title" }, entry.title) : null),
+          Array.isArray(entry.bullets) && entry.bullets.length
+            ? h("ul", { className: "sp-news-list" }, entry.bullets.slice(0, 5).map((text, i) => h("li", { key: i }, text)))
+            : null)));
+    }
+
     function renderPanel(props, state, scope, bump, setScope, mid, ui) {
       const t = props.t;
       const model = props.model;
@@ -1457,11 +1551,16 @@ window.__ModuleLoader__.load({
         h("span", { className: "sp-topbar-sub" }, subtitle),
         // 版本号不进收起状态的文档卡：要看版本得先展开「文档与出处」，实测没人会去展开。
         // 没有版本（老宿主 / 读不到 package.json）就不画这块，不留一个空的 v。
+        // 版本徽标本身就是入口：点一下展开/收起「本版更新」，随时能看，不用等下次升级。
         versionValue
-          ? h("span", {
+          ? h("button", {
+            type: "button",
             className: "sp-version",
             "data-version": versionValue,
-            title: t("spine.version") + " " + versionValue,
+            "data-news-toggle": "1",
+            "aria-expanded": ui && ui.newsOpen ? "true" : "false",
+            title: t("spine.version") + " " + versionValue + " · " + t(ui && ui.newsOpen ? "spine.newsOpen" : "spine.newsToggle"),
+            onClick: () => ui && ui.toggleNews && ui.toggleNews(),
           }, "v" + versionValue)
           : null,
         h("button", {
@@ -2035,6 +2134,15 @@ window.__ModuleLoader__.load({
           cfg && cfg.diagError ? h("div", { className: "sp-channel sp-channel-bad" }, cfg.diagError) : null));
       return h("div", { className: "sp-root", ref: rootRef, "data-spine-cover": "", "data-conversation-composer-overlay": "" },
         topbar,
+        // 升级后第一眼：本版改了什么。读不到就是不画，不占一块空卡。
+        h(NewsCard, {
+          key: "news",
+          t,
+          news: cfg && cfg.news,
+          version: versionValue,
+          open: Boolean(ui && ui.newsOpen),
+          onClose: ui && ui.closeNews,
+        }),
         h("div", { className: "sp-grid" }, kpis),
         composition,
         statsCard,
@@ -2081,18 +2189,27 @@ window.__ModuleLoader__.load({
       const [presetScope, setPresetScope] = React.useState("session");
       const [presetConfirm, setPresetConfirm] = React.useState("");
       // 配置通道：store 只建一次，订阅它拿快照；load 只在挂载时跑一次。
+      // 本版更新：升级后第一次自动展开；之后收起，点顶栏版本号随时再打开。
+      const [newsToggle, setNewsToggle] = React.useState(null);
       const [store] = React.useState(() => createSettingsStore());
       const cfg = React.useSyncExternalStore(store.subscribe, store.getSnapshot);
       const panelSid = state && typeof state === "object" && typeof state.sid === "string" ? state.sid : "";
+      const docsVersion = state && state.docs && typeof state.docs.version === "string"
+        ? state.docs.version.trim().replace(/^v/i, "") : "";
+      const newsOpen = newsToggle === null ? newsShouldAuto(docsVersion) : Boolean(newsToggle);
       React.useEffect(() => {
         // 纯测试环境没有 document/fetch：不跑网络，保留 idle 状态（界面按宿主模型走）。
         if (typeof document === "undefined" || typeof fetch !== "function") return;
         // 带上 sid：describe 才能把「本会话开关」也一起答回来；换会话时重新问一次。
         void store.load(panelSid);
+        void store.loadNews();
       }, [store, panelSid]);
       try {
         if (state && state.projectionError) throw new Error(state.projectionError);
         return renderPanel(props, state, scope, () => setTick(tick + 1), setScope, {
+          newsOpen,
+          toggleNews: () => setNewsToggle(!newsOpen),
+          closeNews: (version) => { writeSeenVersion(version || docsVersion); setNewsToggle(false); },
           ask: midAsk,
           ack: midAck,
           open: () => { setMidAsk(true); setMidAck(false); },
@@ -2308,6 +2425,7 @@ window.__ModuleLoader__.load({
         KNIFE_COLOR, KNOB_GROUPS, MID_ON, PRESETS, KNOB_META, knobRange, fmtKnobValue, MidSwitch,
         shortPath, DocRow, openHostPath, setBridgeCtx, createSettingsStore, postBridge,
         cutBars, CutRow, Chevron,
+        NewsCard, readSeenVersion, writeSeenVersion, NEWS_SEEN_KEY, newsShouldAuto,
       },
     };
   },

@@ -4,3 +4,7 @@ node_modules/
 work-fixed/
 work2/
 work3/
+.test-tmp/
+big-method-*/
+probe-*/
+tmp/

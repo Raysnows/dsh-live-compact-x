@@ -6,22 +6,22 @@
  * 预检查只解析配置，校验交给实际引擎；构造失败时释放本次注册，不重试原版盖掉报错。
  * Resolve config before construction; let the engine validate it and preserve its actual error.
  */
-import { loadBase, loadCompaction, loadSchema, STOCK_ENGINE } from "./adapter.js";
-import { configSchema, engineConfig } from "./settings.js";
-import { installPresetGate } from "./gate.js";
-import { installSettingsBridge } from "./bridge.js";
-import { installPruneHook } from "./v2/prune-hook.js";
-import { spineProjectionDefinition } from "./projection.js";
-import { readGlobalStats } from "./stats.js";
-import { DEFAULTS, readSettings } from "./settings.js";
-import { presetLayerFor } from "./presets.js";
+import { loadBase, loadCompaction, loadSchema, STOCK_ENGINE } from "./src/engine/adapter.js";
+import { configSchema, engineConfig } from "./src/config/settings.js";
+import { installPresetGate } from "./src/engine/gate.js";
+import { installSettingsBridge } from "./src/config/bridge.js";
+import { installPruneHook } from "./src/recall/prune-hook.js";
+import { spineProjectionDefinition } from "./src/engine/projection.js";
+import { readGlobalStats } from "./src/engine/stats.js";
+import { DEFAULTS, readSettings } from "./src/config/settings.js";
+import { presetLayerFor } from "./src/config/presets.js";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
-import { docsFor } from "./docs.js";
-import { shadowDirectory } from "./shadow.js";
-import { sessionDir } from "./shadow.js";
-import { defaultV2, v2Enabled } from "./v2/store-switch.js";
+import { docsFor } from "./src/config/docs.js";
+import { shadowDirectory } from "./src/engine/shadow.js";
+import { sessionDir } from "./src/engine/shadow.js";
+import { defaultV2, v2Enabled } from "./src/recall/store-switch.js";
 
 let Engine = null;
 let Stock = null;
@@ -34,7 +34,7 @@ if (process.env.SPINE_ENGINE_FAIL === "import") {
   loadError = new Error("spine: engine import refused");
 } else {
   try {
-    const engine = await import("./index.js");
+    const engine = await import("./src/engine/index.js");
     Engine = engine.default;
   } catch (error) {
     loadError = error instanceof Error ? error : new Error(String(error));

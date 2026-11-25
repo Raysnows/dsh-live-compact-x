@@ -1,0 +1,32 @@
+name: 问题反馈
+description: 压缩没生效 / 面板显示不对 / 卡片丢事实
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先按这里走一遍，能省一轮来回：
+        1. 打开会话页签「压缩」→ 顶栏确认版本号，以及总开关是不是开着；
+        2. 「调试信息」卡里点 **复制脱敏诊断**（家目录、会话 ID、token 已替换成占位符），粘到下面；
+        3. 把「切点」里对应的旋钮值也贴一下（大刀启用线 / 收尾停止线 / 一刀上限）。
+  - type: textarea
+    id: diag
+    attributes:
+      label: 脱敏诊断
+      description: 从面板「复制脱敏诊断」粘过来，可自行删改
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 哪条会话、第几轮、期望与实际
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      description: DSH 版本、系统、Cordis 版本（诊断里也有）

@@ -1,0 +1,11 @@
+import { estimateCardTokens, netGainTooSmall } from "../../src/engine/netgain.js";
+let pass = 0, fail = 0;
+const ok = (c, n) => { if (c) { pass++; console.log("  ok  " + n); } else { fail++; console.log("  FAIL " + n); } };
+ok(estimateCardTokens("") === 0, "空卡片 = 0");
+ok(estimateCardTokens("x".repeat(3500)) === 1000, "3500 字符 = 1000 token");
+ok(netGainTooSmall(2500, "x".repeat(5250), 3000) === true, "2.5K 切 / 1.5K 卡 / 门槛 3K -> 拦");
+ok(netGainTooSmall(9000, "x".repeat(5250), 3000) === false, "9K 切 / 1.5K 卡 -> 放行");
+ok(netGainTooSmall(1000, "x".repeat(5250), 0) === false, "门槛 0 = 关闭");
+ok(netGainTooSmall(1000, "", 500) === false, "无卡片成本且净收益够 -> 放行");
+console.log("\n通过 " + pass + " / 失败 " + fail);
+if (fail) process.exitCode = 1;

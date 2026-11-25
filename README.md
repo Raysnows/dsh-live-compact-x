@@ -95,6 +95,8 @@ Spine extract.
 
 顶栏还有一个**总开关**：范围是「本会话」时管这一条会话，切到「全部会话」时管全部会话。关掉后不再用小刀 / 中刀 / 大刀，也不主动请官方压缩；宿主真的到了极限时仍由官方摘要兜底（`super.summarize`）。下一回合生效，重启也记得——状态写在 `~/.dsh/spine-switch.json`（全局 `enabled` + 每条会话的 `disabled` 名单），和旋钮那份设置文件分开。
 
+顶栏右侧的**版本胶囊**就是更新日志入口：升级后第一次打开会自动展开一张「本版更新」卡，按版本列出改了什么（跨几个版本升级就连中间几版一起列）；点「知道了」收起，之后随时点版本号再打开。内容来自包内 `CHANGELOG.md`，不联网。
+
 顶部一层是**范围切换**：
 
 - **本会话**：这条会话切过什么；
@@ -209,7 +211,7 @@ Spine extract.
 |---|---|---|
 | `minTokens` | 5k–200k | 20k–60k |
 | `chunkMin` / `chunkMax` | 500–20k / 2k–128k | 1k–4k / 16k–48k |
-| `keepRounds` / `keepRoundTokens` | 1–10 / 8k–200k | 2–5 / 16k–48k |
+| `keepRounds` / `keepRoundTokens` | 1–10 / 32k–200k | 2–5 / 48k–96k |
 | `bigGate` | 100k–1M | 400k–650k |
 | `minNetGain` / `burstCuts` | 0–50k / 1–10 | 2k–8k / 1–4 |
 | `paybackTurns` / `spanBandRatio` | 0–30 / 0–50% | 0–8 / 2%–12% |
@@ -224,17 +226,17 @@ Spine extract.
 
 | # | 改动 | 位置 |
 |---|---|---|
-| 1 | 净收益门槛（切掉 − 卡片 < 门槛就不切） | `netgain.js`、`index.js` |
-| 2 | 影子上限默认 256MB → 64MB（v1 模式） | `shadow.js` |
-| 3 | 零副本：索引（全事件）+ 日志回读 + 修剪兜底 | `v2/`、`raw.js` |
-| 4 | 连切（一次收尾多刀） | `index.js` |
-| 5 | 大刀：跨轮扩段 / 官方大压缩交接 | `plan.js`、`index.js` |
-| 6 | 文件层设置 `~/.dsh/spine-settings.json` | `settings.js` |
-| 7 | 中刀：从卡片一路切到尾巴，窗口由 mergeMaxSpan 管 | `policy.js`、`index.js` |
-| 8 | 动态策略层：动态刀长 / 回本门槛 | `policy.js` |
-| 9 | 宿主注入的上下文快照不再当用户墙 | `notice.js`、`index.js` |
-| 10 | 压缩面板：会话投影 `spine.cuts` + `conversation.view` 页签 | `projection.js`、`client.js` |
-| 11 | 自定义档：本会话 / 本工作区 / 全部会话三层覆盖 | `presets.js`、`settings.js`、`index.js` |
+| 1 | 净收益门槛（切掉 − 卡片 < 门槛就不切） | `src/engine/netgain.js`、`src/engine/index.js` |
+| 2 | 影子上限默认 256MB → 64MB（v1 模式） | `src/engine/shadow.js` |
+| 3 | 零副本：索引（全事件）+ 日志回读 + 修剪兜底 | `src/recall/`、`src/engine/raw.js` |
+| 4 | 连切（一次收尾多刀） | `src/engine/index.js` |
+| 5 | 大刀：跨轮扩段 / 官方大压缩交接 | `src/engine/plan.js`、`src/engine/index.js` |
+| 6 | 文件层设置 `~/.dsh/spine-settings.json` | `src/config/settings.js` |
+| 7 | 中刀：从卡片一路切到尾巴，窗口由 mergeMaxSpan 管 | `src/engine/policy.js`、`src/engine/index.js` |
+| 8 | 动态策略层：动态刀长 / 回本门槛 | `src/engine/policy.js` |
+| 9 | 宿主注入的上下文快照不再当用户墙 | `src/engine/notice.js`、`src/engine/index.js` |
+| 10 | 压缩面板：会话投影 `spine.cuts` + `conversation.view` 页签 | `src/engine/projection.js`、`client.js` |
+| 11 | 自定义档：本会话 / 本工作区 / 全部会话三层覆盖 | `src/config/presets.js`、`src/config/settings.js`、`src/engine/index.js` |
 
 ## 存储模型（v2）
 
@@ -255,20 +257,36 @@ Spine extract.
 ## 开发与测试
 
 ```powershell
-node --check index.js
-node test/netgain.test.mjs         # 6/6
-node test/policy.test.mjs          # 21/21
-node test/merge-span.test.mjs      # 34/34
-node test/card-digest.test.mjs     # 16/16
-node test/context-notice.test.mjs  # 17/17
-node test/projection.test.mjs      # 49/49
-node test/stats.test.mjs           # 29/29
-node test/client-panel.test.mjs    # 84/84
-node v2/test/v2.test.mjs <session.v4.jsonl.zstd>   # 23/23
-node test/wire.test.mjs <session.v4.jsonl.zstd>    # 11/11
+npm test          # 全量：unit/ + e2e/ 一遍跑完，干净 clone 也能跑
 ```
 
-审查记录见 [REVIEW.md](REVIEW.md)。
+单个文件：`node test/unit/policy.test.mjs`。需要替身宿主包的两个用 loader：
+
+```powershell
+node --experimental-loader ./test/fixtures/host-loader.mjs test/unit/big-method.test.mjs
+node --experimental-loader ./test/fixtures/host-loader.mjs test/unit/zero-copy.test.mjs
+```
+
+回归用的真实会话日志是可选的：`SPINE_V2_FIXTURE=<session.v4.jsonl.zstd> npm test`（不给就用合成日志）。
+
+仓库结构（为什么文件这么放）见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)；审查记录见 [docs/REVIEW.md](docs/REVIEW.md)；推送/发布脚本在 `scripts/`。
+
+## 仓库结构
+
+```
+shell.js            宿主入口（薄壳，必须能求值；引擎坏了也不许把这里抛掉）
+client.js           浏览器半边：压缩面板 + 本版更新卡（宿主按约定从包根读它）
+cordis.patch.yml    接管官方 compaction-basic 的 bundle patch
+src/engine/         切点选择、卡片、影子、统计、投影、宿主适配（index.js 是引擎本体）
+src/config/         设置读写、预设档、总开关、文档路径、面板设置桥
+src/recall/         零副本回读：会话日志 zstd 解帧、seq 索引、修剪兜底
+bin/                命令行：dsh-live-compact stats / --version
+test/unit/          纯函数与引擎单测（不需要真会话）
+test/e2e/           面板渲染、回读链路（自带合成夹具）
+test/fixtures/      替身宿主包 + 临时目录助手
+scripts/            发布与基准脚本（不进 npm 包）
+docs/               架构说明与审查记录
+```
 
 ## 许可
 
