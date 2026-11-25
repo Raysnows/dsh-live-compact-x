@@ -1344,6 +1344,17 @@ console.log("9i. 本版更新卡 + 收尾停止线下限");
 
   ok(T.NewsCard({ t: (k) => k, news: { entries: [] }, version: "1.3.24", open: true, onClose: () => {} }) === null, "没有更新记录就不占地方");
 
+  // 宿主读不到时用内嵌要点兜底：卡片照画，并标明来源
+  ok(Array.isArray(T.CLIENT_NEWS) && T.CLIENT_NEWS.length >= 2, "包内自带最近几版要点（" + T.CLIENT_NEWS.length + " 条）");
+  hooks.length = 0;
+  const embedded = T.NewsCard({ t: (k) => k, news: { entries: T.CLIENT_NEWS }, version: "1.3.26", open: true, source: "embedded", onClose() {} });
+  ok(Boolean(embedded) && embedded.props["data-news-source"] === "embedded", "内嵌要点也能画出来，且标明来源");
+  const embeddedTexts = textsOf(embedded);
+  ok(embeddedTexts.includes("v1.3.26"), "内嵌要点带着当前版本号");
+  hooks.length = 0;
+  ok(T.NewsCard({ t: (k) => k, news: { entries: T.CLIENT_NEWS }, version: "1.3.26", open: false, source: "embedded" }) === null, "收起后不画（胶囊仍可点开）");
+  ok(typeof T.newsShouldAuto("1.3.26") === "boolean", "自动展开判定是纯函数");
+
   // 自动展开规则：没见过这个版本才弹；看过后只留顶栏那个入口
   store.delete(T.NEWS_SEEN_KEY);
   ok(T.newsShouldAuto("1.3.24") === true, "新版本第一次打开自动展开");

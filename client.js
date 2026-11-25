@@ -499,6 +499,7 @@ window.__ModuleLoader__.load({
       "spine.newsDismiss": "知道了",
       "spine.newsToggle": "点开看本版更新",
       "spine.newsOpen": "收起本版更新",
+      "spine.newsUnavailable": "更新日志读不到，显示的是包内自带要点",
       "spine.newsCross": "这次是跨版本升级，下面几版都算新内容",
       "spine.docsRepo": "仓库",
       "spine.docsIssues": "反馈",
@@ -701,6 +702,7 @@ window.__ModuleLoader__.load({
       "spine.newsDismiss": "Got it",
       "spine.newsToggle": "open what's new",
       "spine.newsOpen": "hide what's new",
+      "spine.newsUnavailable": "changelog unreadable; showing the digest bundled in the client",
       "spine.newsCross": "Several versions behind: every entry below is new",
       "spine.docsRepo": "Repo",
       "spine.docsIssues": "Issues",
@@ -1437,6 +1439,40 @@ window.__ModuleLoader__.load({
     }
     /** 「上次读到哪个版本」：只记版本号，别的不存，跨升级一次能看完几版。 */
     const NEWS_SEEN_KEY = "spine.news-seen";
+    /**
+     * 内嵌的最近几版要点。宿主那条 op=whatsnew 读不到（包内 CHANGELOG 不在、桥被拦、
+     * 或宿主还是旧版）时用它兜底：更新日志不能因为一处没读到就整块消失。
+     * 发布新版本时这里跟着补一条，只留能读懂的要点，完整版仍在 CHANGELOG.md。
+     */
+    const CLIENT_NEWS = [
+      {
+        version: "1.3.26",
+        date: "2026-11-26",
+        title: "更新日志不再依赖读取成功",
+        bullets: [
+          "面板自带最近几版要点：宿主读不到包内 CHANGELOG 时用它兜底，不再整块消失。",
+          "版本胶囊始终可点：展开/收起更新日志，不依赖任何一次网络或文件读取。",
+        ],
+      },
+      {
+        version: "1.3.25",
+        date: "2026-11-26",
+        title: "安装提示指向 npm",
+        bullets: [
+          "bin 的安装提示改成 npm 包名，不再打印那个会返回 HTML 的下载站地址。",
+        ],
+      },
+      {
+        version: "1.3.24",
+        date: "2026-11-26",
+        title: "本版更新卡 + 收尾停止线下限 + 仓库整理",
+        bullets: [
+          "顶栏版本胶囊就是更新日志入口，升级后第一次自动展开。",
+          "收尾停止线下限 8k → 32k，且必须高于小刀一刀上限。",
+          "实现移进 src/（engine / config / recall），根目录只留宿主直接找的文件。",
+        ],
+      },
+    ];
     function readSeenVersion() {
       try { return String(globalThis.localStorage?.getItem(NEWS_SEEN_KEY) || ""); } catch { return ""; }
     }
@@ -1456,7 +1492,7 @@ window.__ModuleLoader__.load({
     }
 
     function NewsCard(props) {
-      const { t, news, version, open, onClose } = props;
+      const { t, news, version, open, onClose, source } = props;
       const entries = news && Array.isArray(news.entries) ? news.entries : [];
       if (!open || !entries.length) return null;
       const current = String(version || (entries[0] && entries[0].version) || "");
@@ -1469,7 +1505,7 @@ window.__ModuleLoader__.load({
         if (shown.length >= 3) break;
       }
       if (!shown.length) return null;
-      return h("div", { className: "sp-card sp-news", "data-news": current },
+      return h("div", { className: "sp-card sp-news", "data-news": current, "data-news-source": source || "host" },
         h("div", { className: "sp-card-title" },
           t("spine.newsTitle"),
           h("span", { className: "sp-card-sub" }, t("spine.newsHint")),
@@ -1514,6 +1550,13 @@ window.__ModuleLoader__.load({
         : t("spine.scopeSessionHint");
       // 显示成 v1.3.19；版本串本身带 v 的话不重复写（vv1.3.19）。
       const versionValue = String(docs.version ?? "").trim().replace(/^v/i, "");
+      // 更新日志：优先宿主读回的 CHANGELOG 头几版；读不到就用包内内嵌的要点兜底。
+      // 宁可用内嵌要点，也不要整块消失——升级后必须看得到改了什么。
+      const bridgeNews = cfg && cfg.news && Array.isArray(cfg.news.entries) ? cfg.news.entries : [];
+      const panelNews = {
+        entries: bridgeNews.length ? bridgeNews : CLIENT_NEWS,
+        source: bridgeNews.length ? "host" : "embedded",
+      };
       // 总开关：作用在「当前范围」上——看本会话就关本会话，切到全部会话就关全部。
       const swState = (cfg && cfg.sw) || null;
       const switchReady = Boolean(store && cfg && cfg.status === "ready");
@@ -2062,6 +2105,9 @@ window.__ModuleLoader__.load({
             exists: docs.readmeExists !== false, preview: cfg && cfg.doc, loading: Boolean(cfg && cfg.docLoading),
             onPreview: (which) => { void store?.openDoc?.(which); },
           }),
+          cfg && cfg.newsError
+            ? h("div", { className: "sp-docnote sp-docmiss" }, t("spine.newsUnavailable") + " · " + cfg.newsError)
+            : null,
           h(DocRow, {
             t, label: t("spine.docsChangelog"), value: docs.changelog, which: "changelog",
             exists: docs.changelogExists !== false, preview: cfg && cfg.doc, loading: Boolean(cfg && cfg.docLoading),
@@ -2134,11 +2180,12 @@ window.__ModuleLoader__.load({
           cfg && cfg.diagError ? h("div", { className: "sp-channel sp-channel-bad" }, cfg.diagError) : null));
       return h("div", { className: "sp-root", ref: rootRef, "data-spine-cover": "", "data-conversation-composer-overlay": "" },
         topbar,
-        // 升级后第一眼：本版改了什么。读不到就是不画，不占一块空卡。
+        // 升级后第一眼：本版改了什么。宿主读不到就用内联要点兜底，绝不整块消失。
         h(NewsCard, {
           key: "news",
           t,
-          news: cfg && cfg.news,
+          news: panelNews,
+          source: panelNews.source,
           version: versionValue,
           open: Boolean(ui && ui.newsOpen),
           onClose: ui && ui.closeNews,
@@ -2425,7 +2472,7 @@ window.__ModuleLoader__.load({
         KNIFE_COLOR, KNOB_GROUPS, MID_ON, PRESETS, KNOB_META, knobRange, fmtKnobValue, MidSwitch,
         shortPath, DocRow, openHostPath, setBridgeCtx, createSettingsStore, postBridge,
         cutBars, CutRow, Chevron,
-        NewsCard, readSeenVersion, writeSeenVersion, NEWS_SEEN_KEY, newsShouldAuto,
+        NewsCard, readSeenVersion, writeSeenVersion, NEWS_SEEN_KEY, newsShouldAuto, CLIENT_NEWS,
       },
     };
   },

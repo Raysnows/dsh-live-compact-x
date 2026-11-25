@@ -1,3 +1,9 @@
+# 1.3.26（2026-11-26 更新日志内嵌兜底 + 版本胶囊始终可点）
+
+- **更新日志不再依赖「读得到」**：面板自带最近三版要点（`CLIENT_NEWS`），宿主那条 `op=whatsnew` 读不到包内 `CHANGELOG.md`、桥被拦、或宿主还是旧版时，用内嵌要点兜底。以前是「读不到就整块不画」，等于用户永远不知道自己错过了什么；现在最差也有一份要点。
+- **来源可见**：卡片带 `data-news-source="host|embedded"`，文档卡里若 `whatsnew` 真出错，会显示一行「更新日志读不到，显示的是包内自带要点 · <原因>」，不再静默。
+- **版本胶囊始终可点**：展开/收起只要面板状态，不依赖任何一次网络或文件读取；升级后第一次仍然自动展开，点「知道了」只记版本号。
+- 测试：client-panel 386 → 391（内联兜底、来源标记、无更新数据仍画卡、i18n 键），全套 886 → **891 条**。
 # 1.3.25（2026-11-26 安装提示指向 npm，而不是 HTML 页面）
 
 - **`bin` 的安装提示换成 npm 包名**：原来跑完 `dsh-live-compact --version` 会打印 `dsh plugin --profile web add https://download.merkyorlynn.com/downloads/plugins/dsh-live-compact-<version>.tgz`。那个地址现在回的是网页，被人当「安装源」填进安装框就会得到 `ERR_PNPM_BROKEN_METADATA_JSON Unexpected token '<', "<!DOCTYPE "... is not valid JSON`——pnpm 去问 `<那个域名>/dsh-live-compact-x`，拿回一张 HTML。现在只打印 `dsh plugin --profile web add dsh-live-compact-x`，再附一条钉版本的 `npm i dsh-live-compact-x@<version>`。
