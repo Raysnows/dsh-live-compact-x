@@ -493,8 +493,20 @@ console.log("9d. 文档文件可以打开（走宿主 remote，不写死本机�
     t: (key) => key, label: "README", value: long, which: "readme", exists: true,
     preview: { which: "readme", text: "# Spine", truncated: true }, onPreview() {},
   });
-  ok(collect(previewRow, (n) => n.props?.className === "sp-docpre").length === 1, "预览把正文铺在行下面");
-  ok(collect(previewRow, (n) => n.type === "pre").length === 1, "正文用 pre 保留换行");
+  ok(collect(previewRow, (n) => n.props?.className === "sp-doc-body").length === 1, "预览把正文铺在行下面");
+  ok(collect(previewRow, (n) => n.props?.className === "sp-doc-h1").length === 1, "一级标题按标题渲染（不是原文 pre）");
+  // 预览容器必须横跨整行，否则会被塞进 76px 的标签列，文字挤成竖条
+  ok(T.SPINE_CSS.includes(".sp-doc-body{grid-column:1/-1;"), "预览容器横跨整行（grid-column:1/-1）");
+  ok(T.SPINE_CSS.includes("grid-template-columns:76px minmax(0,1fr) auto"), "路径列可压缩，长路径不吃掉按钮");
+  const richRow = T.DocRow({
+    t: (key) => key, label: "CHANGELOG", value: long, which: "changelog", exists: true,
+    preview: { which: "changelog", text: "# 1.0.0\n\n- **第一条** 说明\n- 第二条\n\n正文段落", truncated: false }, onPreview() {},
+  });
+  ok(collect(richRow, (n) => n.props?.className === "sp-doc-ul").length === 1, "要点攒成一个列表");
+  ok(collect(richRow, (n) => n.props?.className === "sp-doc-ul")[0].children.length === 2, "两条要点都在");
+  ok(collect(richRow, (n) => n.props?.className === "sp-doc-p").length === 1, "普通段落单独成段");
+  const boldText = labelOf(collect(richRow, (n) => n.props?.className === "sp-doc-ul")[0]);
+  ok(!boldText.includes("**"), "** 标记在预览里被去掉：" + boldText.slice(0, 40));
   ok(collect(previewRow, (n) => labelOf(n) === "spine.previewTruncated").length === 1, "截断时说明只显示前 4 万字");
 
   const loadingRow = T.DocRow({ t: (key) => key, label: "README", value: long, which: "readme", exists: true, loading: true, onPreview() {} });
@@ -1329,6 +1341,44 @@ console.log("9i. 本版更新卡 + 收尾停止线下限");
   const texts = textsOf(card);
   ok(texts.includes("v1.3.24") && texts.includes("升级后看得到改了什么"), "卡里有版本号与要点");
   ok(texts.includes("spine.newsDismiss"), "有「知道了」按钮");
+  // 新排版：标题行 / 版本号 / 日期 / 标题 / 要点分层，第一版没有分隔线
+  const cls = (node, name) => {
+    const out = [];
+    const visit = (n) => {
+      if (n === null || n === undefined || n === false) return;
+      if (Array.isArray(n)) { n.forEach(visit); return; }
+      if (typeof n !== "object") return;
+      if (String(n.props?.className || "").split(" ").includes(name)) out.push(n);
+      (n.children || []).forEach(visit);
+    };
+    visit(node);
+    return out;
+  };
+  ok(cls(card, "sp-news-top").length === 1, "卡片顶部有独立标题行");
+  ok(cls(card, "sp-news-title-main").length === 1, "标题只有一处");
+  ok(cls(card, "sp-news-hint").length === 0, "不再有那句写给开发者的说明（用户不需要看）");
+  ok(cls(card, "sp-news-body").length === 1, "正文区单独一层（限高滚动）");
+  ok(cls(card, "sp-news-first").length === 1, "第一版标记 sp-news-first（无分隔线）");
+  ok(cls(card, "sp-news-list")[0].children.length === 2, "要点按列表渲染（2 条）");
+  ok(cls(card, "sp-news-ver")[0].children[0] === "v1.3.24", "版本号单独一层");
+
+  // 右上角：文字入口在左、版本胶囊在右
+  const topbar2 = T.renderPanel({ t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() },
+    fakeState, "session", () => {}, () => {}, { newsOpen: false });
+  const entryBtn = buttonOf(topbar2, "data-news-open");
+  const pill = cls(topbar2, "sp-version")[0];
+  ok(Boolean(entryBtn) && textsOf(entryBtn).join("") === "spine.newsEntry", "顶栏有显式的「更新日志」按钮");
+  ok(entryBtn.props["aria-expanded"] === "false" && entryBtn.props.type === "button", "收起状态 aria-expanded=false");
+  ok(Boolean(pill), "版本胶囊仍在");
+  const order = [];
+  const walkOrder = (n) => {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n)) { n.forEach(walkOrder); return; }
+    if (n.props && (n.props["data-news-open"] || n.props["data-news-toggle"])) order.push(n.props["data-news-open"] ? "entry" : "pill");
+    (n.children || []).forEach(walkOrder);
+  };
+  walkOrder(topbar2);
+  ok(order.join(",") === "entry,pill", "入口在版本号左边（" + order.join(",") + "）");
   const okBtn = buttonOf(card, "data-news-ok");
   ok(Boolean(okBtn) && typeof okBtn.props.onClick === "function", "按钮挂得上事件");
   okBtn.props.onClick();
@@ -1336,24 +1386,114 @@ console.log("9i. 本版更新卡 + 收尾停止线下限");
 
   ok(T.NewsCard({ t: (k) => k, news, version: "1.3.24", open: false, onClose: () => {} }) === null, "收起后不占地方");
 
-  store.set(T.NEWS_SEEN_KEY, "1.3.23");
+  // 手动打开时不过滤：即使本机记过「已看过」，点开也要能看到内容（否则按钮看起来没反应）
+  store.set(T.NEWS_SEEN_KEY, "1.3.24");
   hooks.length = 0;
-  const cross = T.NewsCard({ t: (k) => k, news, version: "1.3.24", open: true, onClose: () => {} });
-  const crossTexts = textsOf(cross);
-  ok(crossTexts.includes("v1.3.24") && !crossTexts.includes("v1.3.23"), "跨版本只列上次之后的那几版");
+  const reopened = T.NewsCard({ t: (k) => k, news, version: "1.3.24", open: true, onClose: () => {} });
+  ok(Boolean(reopened), "看过之后手动再点开仍有内容（不再被 seen 过滤成空）");
+  const reopenedTexts = textsOf(reopened);
+  ok(reopenedTexts.includes("v1.3.24"), "手动重开能看到当前版要点");
+  // 但「是否自动展开」仍然尊重已看过：同一版本不自动弹
+  ok(T.newsShouldAuto("1.3.24") === false, "看过之后同一版本不再自动展开");
+  store.delete(T.NEWS_SEEN_KEY);
+  ok(T.newsShouldAuto("1.3.24") === true, "没看过就自动展开");
 
   ok(T.NewsCard({ t: (k) => k, news: { entries: [] }, version: "1.3.24", open: true, onClose: () => {} }) === null, "没有更新记录就不占地方");
 
   // 宿主读不到时用内嵌要点兜底：卡片照画，并标明来源
   ok(Array.isArray(T.CLIENT_NEWS) && T.CLIENT_NEWS.length >= 2, "包内自带最近几版要点（" + T.CLIENT_NEWS.length + " 条）");
   hooks.length = 0;
-  const embedded = T.NewsCard({ t: (k) => k, news: { entries: T.CLIENT_NEWS }, version: "1.3.26", open: true, source: "embedded", onClose() {} });
+  const newest = T.CLIENT_NEWS[0].version;
+  const embedded = T.NewsCard({ t: (k) => k, news: { entries: T.CLIENT_NEWS }, version: newest, open: true, source: "embedded", onClose() {} });
   ok(Boolean(embedded) && embedded.props["data-news-source"] === "embedded", "内嵌要点也能画出来，且标明来源");
   const embeddedTexts = textsOf(embedded);
-  ok(embeddedTexts.includes("v1.3.26"), "内嵌要点带着当前版本号");
+  ok(embeddedTexts.includes("v" + newest), "内嵌要点带着当前版本号（v" + newest + "）");
+ok(T.CLIENT_NEWS.length >= 8, "内嵌要点覆盖今天的重要版本（" + T.CLIENT_NEWS.length + " 条）");
+  // 发布过的版本必须都在：1.3.25 / 1.3.26 / 1.3.27 都上过 npm，不能因合并未发布版本被删掉
+  for (const must of ["1.3.27", "1.3.26", "1.3.25", "1.3.24", "1.3.23", "1.3.22", "1.3.20", "1.3.19"]) {
+    ok(T.CLIENT_NEWS.some((e) => e.version === must), "已发布版本 " + must + " 仍在面板要点里");
+  }
+ok(T.CLIENT_NEWS.every((e) => Array.isArray(e.bullets) && e.bullets.length > 0), "每条都有要点");
+ok(!T.CLIENT_NEWS.some((e) => /renderPanel|slice\(|参数位|scope, bump/.test(e.title + " " + e.bullets.join(" "))), "要点里不出现函数名或参数名");
+ok(T.CLIENT_NEWS.every((e) => !e.bullets.some((b) => b.length > 90)), "每条要点一句话说得完（不超 90 字）");
   hooks.length = 0;
   ok(T.NewsCard({ t: (k) => k, news: { entries: T.CLIENT_NEWS }, version: "1.3.26", open: false, source: "embedded" }) === null, "收起后不画（胶囊仍可点开）");
   ok(typeof T.newsShouldAuto("1.3.26") === "boolean", "自动展开判定是纯函数");
+
+  // 顺序：宿主读回的条目掺在一起也必须按版本号降序，不能出现 1.3.28 排在 1.3.31 上面
+  const merged = T.mergeNews([
+    { version: "1.3.28", date: "2026-11-26", title: "宿主里的 28", bullets: ["x"] },
+    { version: "1.3.31", date: "2026-11-26", title: "宿主里的 31", bullets: ["x"] },
+    { version: "1.3.9", date: "2026-11-26", title: "老版本", bullets: ["x"] },
+  ], T.CLIENT_NEWS);
+  const mergedOrder = merged.map((e) => e.version);
+  ok(mergedOrder[0] === "1.3.32", "合并不看拼接顺序，最高版本排第一：" + mergedOrder.slice(0, 3).join(" > "));
+  ok(mergedOrder.indexOf("1.3.31") < mergedOrder.indexOf("1.3.28"), "1.3.31 在 1.3.28 之前");
+  ok(mergedOrder.indexOf("1.3.9") > mergedOrder.indexOf("1.3.24"), "1.3.9 按数字比较排在 1.3.24 之后（不是按字符串）");
+  ok(new Set(mergedOrder).size === mergedOrder.length, "没有重复版本");
+
+  // 浮层：卡片必须包在 .sp-news-layer 里，且点开时有一层透明遮罩负责「点外面收」
+  hooks.length = 0;
+  const overlayTree = T.renderPanel(
+    { t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() },
+    fakeState, "session", () => {}, () => {},
+    { ask: false, ack: false },
+    { cfg: { news: { entries: T.CLIENT_NEWS }, status: "ready", effective: fakeState.settings, draft: {} }, store: null, newsOpen: true, toggleNews() {}, closeNews() {} },
+  );
+  let layer = null, scrim = null;
+  walk(overlayTree, (entry) => {
+    const n = entry.node;
+    if (entry.kind !== "node" || !n || !n.props) return;
+    if (String(n.props.className || "").includes("sp-news-layer")) layer = n;
+    if (String(n.props.className || "").includes("sp-news-scrim")) scrim = n;
+  });
+  ok(Boolean(layer), "更新日志包在浮层容器里（不占文档流）");
+  ok(Boolean(scrim) && typeof scrim.props.onClick === "function", "点浮层外面能收起");
+  hooks.length = 0;
+  const panelClosed2 = T.renderPanel(
+    { t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() },
+    fakeState, "session", () => {}, () => {},
+    { ask: false, ack: false },
+    { cfg: { news: { entries: T.CLIENT_NEWS }, status: "ready", effective: fakeState.settings, draft: {} }, store: null, newsOpen: false, toggleNews() {}, closeNews() {} },
+  );
+  let closedScrim = null;
+  walk(panelClosed2, (entry) => {
+    const n = entry.node;
+    if (entry.kind === "node" && n && String(n.props?.className || "").includes("sp-news-scrim")) closedScrim = n;
+  });
+  ok(closedScrim === null, "收起时不铺遮罩（不挡下面的点击）");
+
+  // 回归：newsOpen 必须经由 ui 传进 renderPanel，否则 open 恒为 false、按钮点了没反应。
+  // 用一个「永远要求展开」的状态调用真实面板，卡片必须真的出现。
+  store.set(T.NEWS_SEEN_KEY, "");
+  hooks.length = 0;
+  const panelOpen = T.renderPanel(
+    { t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() },
+    fakeState, "session", () => {}, () => {},
+    { ask: false, ack: false },
+    { cfg: { news: { entries: news.entries }, status: "ready", effective: fakeState.settings, draft: {} }, store: null, newsOpen: true, toggleNews() {}, closeNews() {} },
+  );
+  let newsCard = null;
+  walk(panelOpen, (entry) => {
+    const n = entry.node;
+    if (entry.kind === "node" && n && n.type === T.NewsCard) newsCard = n;
+  });
+  ok(Boolean(newsCard) && newsCard.props.open === true, "ui.newsOpen=true 时卡片真的展开（参数位没串）");
+  ok(Boolean(newsCard) && typeof newsCard.props.onClose === "function", "关闭回调也接到了卡片上");
+
+  hooks.length = 0;
+  const panelClosed = T.renderPanel(
+    { t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() },
+    fakeState, "session", () => {}, () => {},
+    { ask: false, ack: false },
+    { cfg: { news: { entries: news.entries }, status: "ready", effective: fakeState.settings, draft: {} }, store: null, newsOpen: false, toggleNews() {}, closeNews() {} },
+  );
+  let closedCard = null;
+  walk(panelClosed, (entry) => {
+    const n = entry.node;
+    if (entry.kind === "node" && n && n.type === T.NewsCard) closedCard = n;
+  });
+  ok(Boolean(closedCard) && closedCard.props.open === false, "ui.newsOpen=false 时卡片收起");
 
   // 自动展开规则：没见过这个版本才弹；看过后只留顶栏那个入口
   store.delete(T.NEWS_SEEN_KEY);

@@ -1,15 +1,36 @@
+# 1.3.32（2026-11-26 更新日志：右上角一点就开，浮在面板上方）
+
+> 1.3.26–1.3.31 这六个版本都只在本地验证、**没有发布**，内容合并进这一版，不再分别占条目。
+
+- **更新日志有了常驻入口**：顶栏右上角「更新日志」按钮（在版本号左边）。点开是**浮层**（`position: fixed`，宽 `min(780px, 100vw - 48px)`，高 `min(66vh, 640px)`，内部滚动、`overscroll-behavior: contain`），下面的统计与时间线位置不动；点浮层外面任何位置收起。
+- **点不开的根因修掉了**：`renderPanel(props, state, scope, bump, setScope, mid, ui)` 七个参数，`newsOpen / toggleNews / closeNews` 原先被塞进第 6 个（`mid`，中刀二次确认那组），面板读的却是 `ui.newsOpen`，于是 `open` 恒为 `false`、`ui.toggleNews` 恒为 `undefined`——按钮画得出来、状态也在变，卡片永远不渲染。现在状态放回 `ui`。
+- **看过之后也能再打开**：卡片内部原来有「已看过就 break」的循环，本机记过版本之后手动点开是空的。过滤只归 `newsShouldAuto`（决定要不要自动展开），手动打开永远有内容。
+- **读不到也不会整块消失**：新增内嵌要点 `CLIENT_NEWS`（宿主 `op=whatsnew` 失败、包内 CHANGELOG 缺失、宿主还是旧版时兜底），卡片带 `data-news-source="host|embedded"`，文档卡会明确写出「更新日志读不到」。
+- **顺序按版本号降序**：新增 `compareVersion`（按数字比较，`1.3.9` 排在 `1.3.24` 之后），合并宿主条目与内嵌要点后统一排序，不再出现旧版排在新版上面。
+- **只写值得说的版本**：内嵌要点是精选集（今天的 1.3.32 / 1.3.24 / 1.3.23 / 1.3.22 / 1.3.20 / 1.3.19），小修补不单独占一条；标题行去掉写给自己看的说明。
+- **给人读的排版**：每版「版本号 → 一句话标题 → 几条要点」，正文去掉 `**` 与反引号；文档卡的 README / 更新记录也按标题与要点渲染（`renderDocBody`）。
+- 测试：全套 923 条。新增覆盖浮层与遮罩、`open` 真传给卡片、内嵌兜底与来源标记、版本排序（含 `1.3.9` vs `1.3.24`）、以及「要点里不出现函数名/参数名」。
+
+# 1.3.27（2026-11-26 更新日志挪到右上角，改成给人读的排版）
+
+- **入口挪到右上角、并且显式**：顶栏右侧版本号**左边**多了一个「更新日志」按钮，点开/收起；版本号胶囊仍然可点（两个入口同一张卡）。升级后第一次仍自动展开。
+- **排版按人读的层级重写**：卡片改成「版本（13px 加粗）→ 日期（10.5px）→ 标题（12px 半粗）→ 要点（12px / 行高 1.7）」，版本之间用虚线分隔，正文区限高可滚动；不再把 Markdown 原文倒进 `<pre>`。
+- **要点重写成人话**：内嵌要点改成一句一件的短句，同一版本以手写短句为准，宿主读到更新版本的条目时自动插在最前面（`mergeNews`）。
+- **文档卡预览也排版**：README 与更新记录预览改为「小标题 + 要点列表 + 段落」渲染（`renderDocBody`）。
+- 测试：client-panel 391 → 396，全套 891 → **896 条**。
+
 # 1.3.26（2026-11-26 更新日志内嵌兜底 + 版本胶囊始终可点）
 
-- **更新日志不再依赖「读得到」**：面板自带最近三版要点（`CLIENT_NEWS`），宿主那条 `op=whatsnew` 读不到包内 `CHANGELOG.md`、桥被拦、或宿主还是旧版时，用内嵌要点兜底。以前是「读不到就整块不画」，等于用户永远不知道自己错过了什么；现在最差也有一份要点。
-- **来源可见**：卡片带 `data-news-source="host|embedded"`，文档卡里若 `whatsnew` 真出错，会显示一行「更新日志读不到，显示的是包内自带要点 · <原因>」，不再静默。
-- **版本胶囊始终可点**：展开/收起只要面板状态，不依赖任何一次网络或文件读取；升级后第一次仍然自动展开，点「知道了」只记版本号。
-- 测试：client-panel 386 → 391（内联兜底、来源标记、无更新数据仍画卡、i18n 键），全套 886 → **891 条**。
+- **更新日志不再依赖「读得到」**：面板自带最近几版要点（`CLIENT_NEWS`），宿主那条 `op=whatsnew` 读不到 `CHANGELOG.md`、桥被拦、或宿主还是旧版时用它兜底。以前是「读不到就整块不画」，等于用户永远不知道自己错过了什么。
+- **来源可见**：卡片带 `data-news-source="host|embedded"`，文档卡里若 `whatsnew` 真出错会显示原因，不再静默。
+- **版本胶囊始终可点**：展开/收起只要面板状态，不依赖任何一次网络或文件读取。
+- 测试：client-panel 386 → 391，全套 886 → **891 条**。
+
 # 1.3.25（2026-11-26 安装提示指向 npm，而不是 HTML 页面）
 
-- **`bin` 的安装提示换成 npm 包名**：原来跑完 `dsh-live-compact --version` 会打印 `dsh plugin --profile web add https://download.merkyorlynn.com/downloads/plugins/dsh-live-compact-<version>.tgz`。那个地址现在回的是网页，被人当「安装源」填进安装框就会得到 `ERR_PNPM_BROKEN_METADATA_JSON Unexpected token '<', "<!DOCTYPE "... is not valid JSON`——pnpm 去问 `<那个域名>/dsh-live-compact-x`，拿回一张 HTML。现在只打印 `dsh plugin --profile web add dsh-live-compact-x`，再附一条钉版本的 `npm i dsh-live-compact-x@<version>`。
-- **实测对照**（同一台机器、同一时刻）：`registry.npmjs.org/dsh-live-compact-x` → `200 application/json`；`download.merkyorlynn.com/dsh-live-compact-x` → `200 text/html`。所以安装源只能是 npm registry 或市场默认源，不能填站点地址。
-- **顺手记一笔市场版本滞后的实测**（不是本仓库能改的）：catalog 包 `dsh-plugin-catalog@2026.1125.27413` 里这条记录写的是 `version: 1.3.21`，而本机 `.dsh-market/discovery-compatibility-v1.json` 缓存里还是 `1.3.17`——安装框按缓存装了旧版，所以有人装到的是 1.3.17。要装当前版本就钉住：`dsh-live-compact-x@1.3.25`。
-- 不涉及引擎逻辑，只改 `bin` 文案与版本号；全套 **886 条断言**仍全过。
+- **`bin` 的安装提示换成 npm 包名**：原来打印的 `download.merkyorlynn.com/downloads/plugins/…tgz` 现在回的是网页，被当安装源填进去就会得到 `ERR_PNPM_BROKEN_METADATA_JSON Unexpected token '<'…`（pnpm 去问那个域名，拿回一张 HTML）。现在只打印 `dsh plugin --profile web add dsh-live-compact-x` 与钉版本的 `npm i dsh-live-compact-x@<version>`。
+- **实测对照**（同一台机器、同一时刻）：`registry.npmjs.org/dsh-live-compact-x` → `200 application/json`；`download.merkyorlynn.com/dsh-live-compact-x` → `200 text/html`。
+- 不涉及引擎逻辑，只改 `bin` 文案与版本号；全套 886 条断言仍全过。
 
 # 1.3.24（2026-11-26 本版更新卡 + 收尾停止线下限 + 仓库整理）
 

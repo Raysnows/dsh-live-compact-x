@@ -494,8 +494,10 @@ window.__ModuleLoader__.load({
       "spine.docsHint": "点开看文档，或复制路径",
       "spine.docsReadme": "README",
       "spine.docsChangelog": "更新记录",
+      "spine.newsEntry": "更新日志",
       "spine.newsTitle": "本版更新",
-      "spine.newsHint": "升级后自动展开一次；点顶栏版本号随时再看",
+      // 这句是写给自己看的解释，用户不需要；保留空值以免别处读到 undefined。
+      "spine.newsHint": "",
       "spine.newsDismiss": "知道了",
       "spine.newsToggle": "点开看本版更新",
       "spine.newsOpen": "收起本版更新",
@@ -697,8 +699,9 @@ window.__ModuleLoader__.load({
       "spine.docsHint": "open or copy a path",
       "spine.docsReadme": "README",
       "spine.docsChangelog": "Changelog",
+      "spine.newsEntry": "Changelog",
       "spine.newsTitle": "What's new",
-      "spine.newsHint": "opens once after an update; click the version pill anytime",
+      "spine.newsHint": "",
       "spine.newsDismiss": "Got it",
       "spine.newsToggle": "open what's new",
       "spine.newsOpen": "hide what's new",
@@ -837,7 +840,7 @@ window.__ModuleLoader__.load({
       ".sp-foot{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:8px;flex-wrap:wrap}",
       ".sp-dot-sep{opacity:.45}",
       ".sp-path{font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all}",
-      ".sp-docrow{display:grid;grid-template-columns:76px 1fr auto;gap:8px;align-items:center;padding:3px 0;border-bottom:1px dashed var(--dsw-alias-border-l2)}",
+      ".sp-docrow{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:8px;align-items:center;padding:3px 0;border-bottom:1px dashed var(--dsw-alias-border-l2)}",
       ".sp-docrow:last-child{border-bottom:0}",
       ".sp-docactions{display:inline-flex;align-items:center;gap:6px;justify-self:end}",
       ".sp-docnote{grid-column:1/-1;font-size:10.5px;line-height:1.4;color:var(--dsw-alias-label-secondary)}",
@@ -899,15 +902,39 @@ window.__ModuleLoader__.load({
       ".sp-warn-body{font-size:11px;line-height:1.55;color:var(--dsw-alias-label-secondary);margin-bottom:6px}",
       ".sp-warn-actions{display:flex;align-items:center;gap:6px}",
       ".sp-note{margin-top:8px;padding-top:7px;border-top:1px dashed var(--dsw-alias-border-l2);font-size:10.5px;line-height:1.6;color:var(--dsw-alias-label-secondary)}",
-      // 本版更新卡：边框用信息色，一眼区分于普通统计卡；「知道了」跟标题同一行。
-      ".sp-news{border-color:var(--dsw-alias-state-info-primary,#4C8DF6)}",
-      ".sp-news-ok{margin-left:8px;flex:none;font-size:11px;padding:2px 9px}",
-      ".sp-news-item{margin-top:8px}",
-      ".sp-news-head{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dsw-alias-label-secondary);flex-wrap:wrap}",
-      ".sp-news-ver{font-weight:600;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
-      ".sp-news-title{color:var(--dsw-alias-label-primary)}",
-      ".sp-news-list{margin:6px 0 0;padding-left:16px;font-size:11.5px;line-height:1.65;color:var(--dsw-alias-label-secondary)}",
-      ".sp-news-list li{margin-bottom:3px}",
+      // 本版更新：浮层，不占文档流——点开时压在面板上方，关掉就消失，下面的卡片不会跳动。
+      // 遮罩只负责「点外面收起来」，不压暗也不吃滚动，看着还是原来的面板。
+      ".sp-news-scrim{position:fixed;inset:0;z-index:59;background:transparent}",
+      ".sp-news-layer{position:fixed;top:64px;right:24px;z-index:60;width:min(780px,calc(100vw - 48px));pointer-events:none}",
+      ".sp-news{border-color:var(--dsw-alias-state-info-primary,#4C8DF6);padding:14px 16px;margin:0;pointer-events:auto;background:var(--dsw-alias-bg-layer-1);box-shadow:0 12px 32px rgba(0,0,0,.32)}",
+      ".sp-news-top{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap}",
+      ".sp-news-title-main{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}",
+      ".sp-news-ok{flex:none;font-size:11px;padding:2px 9px;margin-left:auto}",
+      // 内容高到读不完时自己滚：限高 + 细滚动条，滚轮hover在这块上就不会带动整页。
+      ".sp-news-body{max-height:min(66vh,640px);overflow-y:auto;overscroll-behavior:contain;padding-right:6px;scrollbar-width:thin}",
+      ".sp-news-body::-webkit-scrollbar{width:8px}",
+      ".sp-news-body::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l2);border-radius:4px}",
+      ".sp-news-body::-webkit-scrollbar-thumb:hover{background:var(--dsw-alias-label-secondary)}",
+      ".sp-news-item{padding:10px 0 2px;border-top:1px dashed var(--dsw-alias-border-l2)}",
+      ".sp-news-item.sp-news-first{border-top:0;padding-top:0}",
+      ".sp-news-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}",
+      ".sp-news-ver{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
+      ".sp-news-date{font-size:10.5px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
+      ".sp-news-title{margin-top:2px;font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}",
+      ".sp-news-list{margin:5px 0 0;padding-left:18px;font-size:12px;line-height:1.7;color:var(--dsw-alias-label-secondary)}",
+      ".sp-news-list li{margin-bottom:4px}",
+      ".sp-news-entry{flex:none;font-size:11px;padding:2px 10px}",
+      ".sp-news-entry-on{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-state-info-primary,#4C8DF6)}",
+      // grid-column:1/-1 是关键：.sp-docrow 是三列网格（标签 / 路径 / 按钮），
+      // 少了这行预览会被塞进 76px 的标签列，文字挤成一条竖线。
+      ".sp-doc-trunc{grid-column:1/-1;font-size:10.5px;color:var(--dsw-alias-label-secondary);padding:2px 0 4px}",
+      ".sp-doc-body{grid-column:1/-1;margin-top:6px;max-height:46vh;overflow:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:10px 12px;background:var(--dsw-alias-bg-layer-2)}",
+      ".sp-doc-h1{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);margin:14px 0 6px}",
+      ".sp-doc-h1:first-child{margin-top:0}",
+      ".sp-doc-h2{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary);margin:10px 0 4px}",
+      ".sp-doc-p{margin:0 0 6px;font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary)}",
+      ".sp-doc-ul{margin:0 0 8px;padding-left:18px;font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary)}",
+      ".sp-doc-ul li{margin-bottom:3px}",
     ].join("\n");
     // 五类刀法：小刀 / 中刀 / 大刀 都是本插件动的手（大刀借用官方摘要），
     // 官方是插件接管前后的原生压缩，旧卡片是我们早期没记刀名的卡。
@@ -1405,6 +1432,43 @@ window.__ModuleLoader__.load({
      * 不再放「打开」：宿主只肯打开工作区里的路径，插件目录在 profiles 下，按钮注定失败。
      * 预览走同一条设置桥把正文读回来，直接铺在行下面——看得见，才是真能看。
      */
+    /**
+     * 文档预览：把 Markdown 粗读成「小标题 / 要点 / 段落」。
+     * 这里的目标是能读，不是忠实还原：先把 ** 与反引号去掉，再按行分层，
+     * 长段落仍是段落，要点攒成一个列表——不再把原文一股脑塞进 <pre>。
+     */
+    function renderDocBody(text) {
+      const lines = String(text || "").split(/\r?\n/);
+      const out = [];
+      let list = null;
+      let key = 0;
+      const flush = () => { if (list) { out.push(h("ul", { className: "sp-doc-ul", key: "ul" + (key++) }, list)); list = null; } };
+      for (const raw of lines) {
+        const line = String(raw).replace(/\*\*/g, "").replace(/`/g, "").trimEnd();
+        const trimmed = line.trim();
+        if (!trimmed) { flush(); continue; }
+        const head = /^(#{1,6})\s+(.*)$/.exec(trimmed);
+        if (head) {
+          flush();
+          out.push(h("div", {
+            className: head[1].length <= 1 ? "sp-doc-h1" : "sp-doc-h2",
+            key: "h" + (key++),
+          }, head[2]));
+          continue;
+        }
+        const bullet = /^[-*]\s+(.*)$/.exec(trimmed);
+        if (bullet) {
+          if (!list) list = [];
+          list.push(h("li", { key: "li" + (key++) }, bullet[1]));
+          continue;
+        }
+        flush();
+        out.push(h("p", { className: "sp-doc-p", key: "p" + (key++) }, trimmed));
+      }
+      flush();
+      return out.length ? out : [h("p", { className: "sp-doc-p", key: "empty" }, "")];
+    }
+
     function DocRow(props) {
       const { t, label, value, href, exists, which, preview, onPreview, loading } = props;
       if (!value) return null;
@@ -1431,10 +1495,13 @@ window.__ModuleLoader__.load({
         body,
         h("span", { className: "sp-docactions" }, buttons),
         missing ? h("span", { className: "sp-docnote sp-docmiss" }, t("spine.missing")) : null,
+        // 预览必须自己是网格的直接子元素：套一层 div 会让 grid-column 作用在错误的元素上，
+        // 预览被塞回 76px 的标签列，文字挤成一条竖线。
         open && open.text
-          ? h("div", { className: "sp-docpre" },
-            h("pre", null, open.text),
-            open.truncated ? h("div", { className: "sp-docnote" }, t("spine.previewTruncated")) : null)
+          ? h("div", { className: "sp-doc-body", "data-doc-body": which || "", key: "body" }, renderDocBody(open.text))
+          : null,
+        open && open.truncated
+          ? h("div", { className: "sp-docnote sp-doc-trunc", key: "trunc" }, t("spine.previewTruncated"))
           : null);
     }
     /** 「上次读到哪个版本」：只记版本号，别的不存，跨升级一次能看完几版。 */
@@ -1442,37 +1509,118 @@ window.__ModuleLoader__.load({
     /**
      * 内嵌的最近几版要点。宿主那条 op=whatsnew 读不到（包内 CHANGELOG 不在、桥被拦、
      * 或宿主还是旧版）时用它兜底：更新日志不能因为一处没读到就整块消失。
-     * 发布新版本时这里跟着补一条，只留能读懂的要点，完整版仍在 CHANGELOG.md。
+     * 写法要求：一句一件、说人话、不带 markdown 标记——这里是给人看的，不是给人翻的。
      */
     const CLIENT_NEWS = [
       {
+        version: "1.3.32",
+        date: "2026-11-26",
+        title: "更新日志：右上角一点就开，浮在面板上方",
+        bullets: [
+          "顶栏右上角新增「更新日志」按钮，就在版本号左边；点开浮在面板上层，下面的统计不动，点浮层外面即收起。",
+          "内容按「版本号 → 一句话标题 → 几条要点」排，从新到旧可上下滚，一屏能读完一整版。",
+          "以前按钮点了像没反应、或者读不到记录就整块消失的毛病，一并修好了；现在面板自带要点，最少也看得到改了什么。",
+        ],
+      },
+      {
+        version: "1.3.27",
+        date: "2026-11-26",
+        title: "更新日志挪到右上角，排版改成给人读的",
+        bullets: [
+          "顶栏右上角、版本号左边多了一个「更新日志」按钮，点开随时能看，再点收起。",
+          "每一版按「版本号 → 一句话标题 → 几条要点」排，不再是挤成一团的原文。",
+        ],
+      },
+      {
         version: "1.3.26",
         date: "2026-11-26",
-        title: "更新日志不再依赖读取成功",
+        title: "更新日志不会再整块消失",
         bullets: [
-          "面板自带最近几版要点：宿主读不到包内 CHANGELOG 时用它兜底，不再整块消失。",
-          "版本胶囊始终可点：展开/收起更新日志，不依赖任何一次网络或文件读取。",
+          "以前读不到更新记录时，这块内容会凭空不见；现在面板自带一份要点，最少也能看到改了什么。",
         ],
       },
       {
         version: "1.3.25",
         date: "2026-11-26",
-        title: "安装提示指向 npm",
+        title: "安装提示改成正确的装法",
         bullets: [
-          "bin 的安装提示改成 npm 包名，不再打印那个会返回 HTML 的下载站地址。",
+          "以前给出的安装地址现在打开是网页，照它装会报错；现在直接给 npm 包名。",
         ],
       },
       {
         version: "1.3.24",
         date: "2026-11-26",
-        title: "本版更新卡 + 收尾停止线下限 + 仓库整理",
+        title: "收尾停止线下限抬高，不再和小刀撞车",
         bullets: [
-          "顶栏版本胶囊就是更新日志入口，升级后第一次自动展开。",
-          "收尾停止线下限 8k → 32k，且必须高于小刀一刀上限。",
-          "实现移进 src/（engine / config / recall），根目录只留宿主直接找的文件。",
+          "「收尾停止线」最低从 8k 抬到 32k，必须比一刀切掉的量更大，否则等于把一刀拆成两刀。",
+          "常用区间改为 48k–96k；推荐档、小刀优先、大刀优先三个预设都同步改好。",
+          "实现文件重新分组到 src/ 下，根目录只留宿主直接找的文件。",
+        ],
+      },
+      {
+        version: "1.3.23",
+        date: "2026-11-25",
+        title: "面板里可以直接报问题",
+        bullets: [
+          "调试卡新增「复制脱敏诊断」与「去 GitHub 提 issue」，诊断会自动抹掉家目录、会话 id 和密钥。",
+          "大刀的说明文字改对了：它既可以用官方模型，也可以切成本地脚本。",
+        ],
+      },
+      {
+        version: "1.3.22",
+        date: "2026-11-25",
+        title: "修好了「插件起不来、压缩全停」",
+        bullets: [
+          "新版 Cordis（4.0.0-rc.12）下插件会直接报错退出，而官方压缩已被关掉，等于整条会话没有压缩。已修复。",
+          "许可证文件改成标准 MIT，仓库页不再显示「无法识别」。",
+        ],
+      },
+      {
+        version: "1.3.20",
+        date: "2026-11-24",
+        title: "大刀可选官方模型或本地脚本",
+        bullets: [
+          "大刀默认请官方模型归纳，也可以在面板里切成零模型调用的本地脚本，不花钱。",
+          "卡片和面板的时间都改成年月日完整显示，跨天不再只剩时分秒。",
+          "顶栏右上角开始显示版本号。",
+        ],
+      },
+      {
+        version: "1.3.19",
+        date: "2026-11-24",
+        title: "真·零副本：不再为每一刀留一份全文备份",
+        bullets: [
+          "以前每切一刀都在磁盘留一份原文副本，现在默认不写，只记事件号，需要时从会话日志按号回读。",
+          "卡片上会写明原文在会话日志的哪个事件号，不再含糊。",
         ],
       },
     ];
+    /** 版本号比较：'1.3.9' < '1.3.31' 这种要按数字比，不能按字符串比。 */
+    function versionRank(version) {
+      return String(version || "").split(".").map((part) => Number(part) || 0);
+    }
+    function compareVersion(a, b) {
+      const left = versionRank(a);
+      const right = versionRank(b);
+      for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+        const diff = (right[i] || 0) - (left[i] || 0); // 降序：新的在前
+        if (diff) return diff;
+      }
+      return 0;
+    }
+    /**
+     * 宿主读回的条目与内嵌要点合并：同一版本以手写的短句为准（内嵌那份是精选过的）。
+     * 合并后**按版本号降序**排，不能靠拼接顺序——宿主读回的是 CHANGELOG 头几版，
+     * 直接拼在前面会出现「1.3.28 排在 1.3.31 上面」这种乱序。
+     */
+    function mergeNews(hostEntries, digest) {
+      const known = new Set(digest.map((entry) => entry.version));
+      const fresh = (Array.isArray(hostEntries) ? hostEntries : [])
+        .filter((entry) => entry && entry.version && !known.has(entry.version));
+      const merged = [...fresh, ...digest].filter((entry) => entry && entry.version);
+      return merged.sort((a, b) => compareVersion(a.version, b.version));
+    }
+
     function readSeenVersion() {
       try { return String(globalThis.localStorage?.getItem(NEWS_SEEN_KEY) || ""); } catch { return ""; }
     }
@@ -1482,7 +1630,7 @@ window.__ModuleLoader__.load({
 
     /**
      * 本版更新卡：升级后第一眼就该知道改了什么。
-     * 只列 CHANGELOG.md 头几段的要点，最多三版；点「知道了」按版本号记在本机，不再重复打扰。
+     * 按版本号从新到旧最多列 12 条；点「知道了」按版本号记在本机，之后不再自动弹。
      */
     /** 升级后第一次自动展开；展开与否由面板状态管，顶栏版本号随时能再点开。 */
     function newsShouldAuto(version) {
@@ -1495,34 +1643,31 @@ window.__ModuleLoader__.load({
       const { t, news, version, open, onClose, source } = props;
       const entries = news && Array.isArray(news.entries) ? news.entries : [];
       if (!open || !entries.length) return null;
-      const current = String(version || (entries[0] && entries[0].version) || "");
-      const seen = readSeenVersion();
-      const shown = [];
-      for (const entry of entries) {
-        if (!entry || !entry.version) continue;
-        if (seen && entry.version === seen) break;
-        shown.push(entry);
-        if (shown.length >= 3) break;
-      }
-      if (!shown.length) return null;
+      // 手动点开时显示全部条目，不做「已看过就过滤」——过滤只归 newsShouldAuto 管，
+      // 否则本机记过版本之后，按钮点了打开也是空的，看起来像没反应。
+      const sorted = entries.slice().sort((a, b) => compareVersion(a.version, b.version));
+      const shown = sorted.slice(0, 12);
+      // 当前版本以 docs.version 为准，读不到才退回第一条（已按版本号降序，一定是最新的）。
+      const current = String(version || (shown[0] && shown[0].version) || "");
       return h("div", { className: "sp-card sp-news", "data-news": current, "data-news-source": source || "host" },
-        h("div", { className: "sp-card-title" },
-          t("spine.newsTitle"),
-          h("span", { className: "sp-card-sub" }, t("spine.newsHint")),
+        h("div", { className: "sp-news-top" },
+          h("span", { className: "sp-news-title-main" }, t("spine.newsTitle")),
           h("button", {
             className: "sp-btn sp-news-ok",
             "data-news-ok": "1",
             onClick: () => onClose && onClose(current),
           }, t("spine.newsDismiss"))),
-        shown.length > 1 ? h("div", { className: "sp-field-hint" }, t("spine.newsCross")) : null,
-        shown.map((entry) => h("div", { className: "sp-news-item", key: entry.version },
+        h("div", { className: "sp-news-body" }, shown.map((entry, index) => h("section", {
+          className: "sp-news-item" + (index === 0 ? " sp-news-first" : ""),
+          key: entry.version,
+        },
           h("div", { className: "sp-news-head" },
             h("span", { className: "sp-news-ver" }, "v" + entry.version),
-            entry.date ? h("span", { className: "sp-news-date" }, entry.date) : null,
-            entry.title ? h("span", { className: "sp-news-title" }, entry.title) : null),
+            entry.date ? h("span", { className: "sp-news-date" }, entry.date) : null),
+          entry.title ? h("div", { className: "sp-news-title" }, entry.title) : null,
           Array.isArray(entry.bullets) && entry.bullets.length
             ? h("ul", { className: "sp-news-list" }, entry.bullets.slice(0, 5).map((text, i) => h("li", { key: i }, text)))
-            : null)));
+            : null))));
     }
 
     function renderPanel(props, state, scope, bump, setScope, mid, ui) {
@@ -1554,7 +1699,7 @@ window.__ModuleLoader__.load({
       // 宁可用内嵌要点，也不要整块消失——升级后必须看得到改了什么。
       const bridgeNews = cfg && cfg.news && Array.isArray(cfg.news.entries) ? cfg.news.entries : [];
       const panelNews = {
-        entries: bridgeNews.length ? bridgeNews : CLIENT_NEWS,
+        entries: mergeNews(bridgeNews, CLIENT_NEWS),
         source: bridgeNews.length ? "host" : "embedded",
       };
       // 总开关：作用在「当前范围」上——看本会话就关本会话，切到全部会话就关全部。
@@ -1595,6 +1740,17 @@ window.__ModuleLoader__.load({
         // 版本号不进收起状态的文档卡：要看版本得先展开「文档与出处」，实测没人会去展开。
         // 没有版本（老宿主 / 读不到 package.json）就不画这块，不留一个空的 v。
         // 版本徽标本身就是入口：点一下展开/收起「本版更新」，随时能看，不用等下次升级。
+        // 右上角：文字入口在左，版本号在右。两个都能开合同一张更新日志卡。
+        versionValue
+          ? h("button", {
+            type: "button",
+            className: "sp-btn sp-news-entry" + (ui && ui.newsOpen ? " sp-news-entry-on" : ""),
+            "data-news-open": "1",
+            "aria-expanded": ui && ui.newsOpen ? "true" : "false",
+            title: t(ui && ui.newsOpen ? "spine.newsOpen" : "spine.newsToggle"),
+            onClick: () => ui && ui.toggleNews && ui.toggleNews(),
+          }, t("spine.newsEntry"))
+          : null,
         versionValue
           ? h("button", {
             type: "button",
@@ -2180,16 +2336,24 @@ window.__ModuleLoader__.load({
           cfg && cfg.diagError ? h("div", { className: "sp-channel sp-channel-bad" }, cfg.diagError) : null));
       return h("div", { className: "sp-root", ref: rootRef, "data-spine-cover": "", "data-conversation-composer-overlay": "" },
         topbar,
-        // 升级后第一眼：本版改了什么。宿主读不到就用内联要点兜底，绝不整块消失。
-        h(NewsCard, {
-          key: "news",
-          t,
-          news: panelNews,
-          source: panelNews.source,
-          version: versionValue,
-          open: Boolean(ui && ui.newsOpen),
-          onClose: ui && ui.closeNews,
-        }),
+        // 升级后第一眼：本版改了什么。浮层显示，不占文档流。
+        // 宿主读不到就用内联要点兜底，绝不整块消失。
+        ui && ui.newsOpen
+          ? h("div", {
+            className: "sp-news-scrim",
+            key: "news-scrim",
+            onClick: () => ui && ui.closeNews && ui.closeNews(),
+          })
+          : null,
+        h("div", { className: "sp-news-layer", key: "news-layer" },
+          h(NewsCard, {
+            t,
+            news: panelNews,
+            source: panelNews.source,
+            version: versionValue,
+            open: Boolean(ui && ui.newsOpen),
+            onClose: ui && ui.closeNews,
+          })),
         h("div", { className: "sp-grid" }, kpis),
         composition,
         statsCard,
@@ -2254,9 +2418,6 @@ window.__ModuleLoader__.load({
       try {
         if (state && state.projectionError) throw new Error(state.projectionError);
         return renderPanel(props, state, scope, () => setTick(tick + 1), setScope, {
-          newsOpen,
-          toggleNews: () => setNewsToggle(!newsOpen),
-          closeNews: (version) => { writeSeenVersion(version || docsVersion); setNewsToggle(false); },
           ask: midAsk,
           ack: midAck,
           open: () => { setMidAsk(true); setMidAck(false); },
@@ -2265,6 +2426,11 @@ window.__ModuleLoader__.load({
         }, {
           timelineAll,
           toggleTimeline: () => setTimelineAll((value) => !value),
+          // 更新日志的状态必须放在 ui 里：面板读的是 ui.newsOpen / ui.toggleNews。
+          // 之前放进第 6 个参数（mid），于是 open 恒为 false、按钮点了没反应。
+          newsOpen,
+          toggleNews: () => setNewsToggle(!newsOpen),
+          closeNews: (version) => { writeSeenVersion(version || docsVersion); setNewsToggle(false); },
           cfg,
           store,
           preset: {
@@ -2472,7 +2638,7 @@ window.__ModuleLoader__.load({
         KNIFE_COLOR, KNOB_GROUPS, MID_ON, PRESETS, KNOB_META, knobRange, fmtKnobValue, MidSwitch,
         shortPath, DocRow, openHostPath, setBridgeCtx, createSettingsStore, postBridge,
         cutBars, CutRow, Chevron,
-        NewsCard, readSeenVersion, writeSeenVersion, NEWS_SEEN_KEY, newsShouldAuto, CLIENT_NEWS,
+        NewsCard, readSeenVersion, writeSeenVersion, NEWS_SEEN_KEY, newsShouldAuto, CLIENT_NEWS, mergeNews, compareVersion,
       },
     };
   },
