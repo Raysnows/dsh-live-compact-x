@@ -1,3 +1,10 @@
+# 1.3.25（2026-11-26 安装提示指向 npm，而不是 HTML 页面）
+
+- **`bin` 的安装提示换成 npm 包名**：原来跑完 `dsh-live-compact --version` 会打印 `dsh plugin --profile web add https://download.merkyorlynn.com/downloads/plugins/dsh-live-compact-<version>.tgz`。那个地址现在回的是网页，被人当「安装源」填进安装框就会得到 `ERR_PNPM_BROKEN_METADATA_JSON Unexpected token '<', "<!DOCTYPE "... is not valid JSON`——pnpm 去问 `<那个域名>/dsh-live-compact-x`，拿回一张 HTML。现在只打印 `dsh plugin --profile web add dsh-live-compact-x`，再附一条钉版本的 `npm i dsh-live-compact-x@<version>`。
+- **实测对照**（同一台机器、同一时刻）：`registry.npmjs.org/dsh-live-compact-x` → `200 application/json`；`download.merkyorlynn.com/dsh-live-compact-x` → `200 text/html`。所以安装源只能是 npm registry 或市场默认源，不能填站点地址。
+- **顺手记一笔市场版本滞后的实测**（不是本仓库能改的）：catalog 包 `dsh-plugin-catalog@2026.1125.27413` 里这条记录写的是 `version: 1.3.21`，而本机 `.dsh-market/discovery-compatibility-v1.json` 缓存里还是 `1.3.17`——安装框按缓存装了旧版，所以有人装到的是 1.3.17。要装当前版本就钉住：`dsh-live-compact-x@1.3.25`。
+- 不涉及引擎逻辑，只改 `bin` 文案与版本号；全套 **886 条断言**仍全过。
+
 # 1.3.24（2026-11-26 本版更新卡 + 收尾停止线下限 + 仓库整理）
 
 - **升级后直接告诉你改了什么**：顶栏右侧的版本胶囊（`v1.3.24`）现在就是入口——升级后第一次打开会自动展开一张「本版更新」卡，标题下写明这版（跨版本升级则连中间几版）改了什么；点「知道了」收起并把版本记在本机，之后**随时点版本号**再展开/收起，不会被关死。内容取自包内 `CHANGELOG.md` 的头三版（版本 / 日期 / 标题 / 要点）。宿主侧新增 `op=whatsnew`：只读切点、不联网，读不到更新记录就不画空卡。

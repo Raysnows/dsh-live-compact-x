@@ -22,5 +22,7 @@ if (arg === "--version" || arg === "-v") {
   process.exit(0);
 }
 console.log(`${pkg.name} ${pkg.version}`);
-console.log(`dsh plugin --profile headless add https://download.merkyorlynn.com/downloads/plugins/dsh-live-compact-${pkg.version}.tgz`);
-console.log(`dsh plugin --profile web add https://download.merkyorlynn.com/downloads/plugins/dsh-live-compact-${pkg.version}.tgz`);
+// 安装提示只给 npm 包名。自建下载站那个域名现在回的是 HTML 页面，
+// 拿它当「安装源」会直接撞 ERR_PNPM_BROKEN_METADATA_JSON（不是 JSON）。
+console.log(`dsh plugin --profile web add ${pkg.name}`);
+console.log(`钉版本：npm i ${pkg.name}@${pkg.version}`);
