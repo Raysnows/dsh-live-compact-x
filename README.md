@@ -25,10 +25,10 @@
 ## 安装
 
 ```
-plugin_manager: install_bundle(target: "dsh-live-compact-x@1.3.21")
+plugin_manager: install_bundle(target: "dsh-live-compact-x")
 ```
 
-也可以直接用 npm 装：`npm i dsh-live-compact-x@1.3.21`（想跟 beta 通道就写 `@beta`）。装完重启宿主。它的 `cordis.patch.yml` 会先禁用官方 `compaction-basic` 的**插件安装位**，再插入自己。
+也可以直接用 npm 装：`npm i dsh-live-compact-x`（默认装最新版；要固定某一版就写 `@版本号`，想跟 beta 通道就写 `@beta`）。装完重启宿主。它的 `cordis.patch.yml` 会先禁用官方 `compaction-basic` 的**插件安装位**，再插入自己。
 
 ### 推荐配合 `dsh-context` 一起用
 
