@@ -20,8 +20,10 @@ export const KNOB_KEYS = [
   "chunkMax", "chunkMin", "burstCuts", "paybackTurns", "spanBandRatio", "minNetGain",
   "deepCutAbove", "mergeMaxSpan", "mergeBreakEven", "mergeCooldownMs",
   "officialAbove", "officialCooldownMs", "bigGate", "keepRounds", "keepRoundTokens",
-  // 大刀归纳器：0 = 官方模型摘要，1 = 本地脚本卡片。面板要按它高亮，所以随视图下发。
+  // 大刀归纳器：0 = 当前模型摘要，1 = 本地脚本卡片。面板要按它高亮，所以随视图下发。
   "officialScript",
+  // 本地脚本版本：1 = 新版（价值密度 + 去重），0 = 稳定版。同样要随视图下发。
+  "scriptEngine",
 ];
 
 const CARD_KINDS = new Set(["spine-checkpoint", "compact-checkpoint"]);

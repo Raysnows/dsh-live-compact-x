@@ -1,3 +1,27 @@
+# 1.4.0（2026-11-26 本地脚本可选版本 + 中刀并入刀的队列 + 反馈能带参数）
+
+> 从 1.3 跨到 1.4：这版改的是「卡片怎么留行」这条底层规则，不是小修补，所以升到次版本号。
+
+- **本地脚本有了两个版本**（面板「切点 → 本地脚本」）：**新版（默认）** 和 **稳定版**。小刀、中刀、大刀的本地卡片都跟这个开关走；大刀里选「当前模型」那条路不受影响。
+- **新版怎么留行**：先保报错、路径、命令和你最后说的约束，同一段报错只留一条，剩下的才按长短塞。实测同一段 23 万字符、预算 4,000：**丢掉的关键事实 7 条 → 3 条**，保住的有用行 47 → 52。
+- **稳定版 = 1.3.32 的老行为**（按原文顺序先到先得），想要「同样的输入永远同一张卡」就点回去。
+- **更新日志默认只给最新版**：卡片里只展开当前这一版，下面的「历史版本（N）」按钮点了才列旧版；旧版本仍完整留在仓库更新记录里。
+- **中刀组默认收起**：它是实验性功能，没开的时候不再占地方，点「中刀 ▸」才展开。
+- **中刀和大刀的启用线咬住了**：中刀线必须比大刀线低 1 万 token 以上（滑块拖不过去）；存反了面板直接警告「中刀永远轮不到」。
+- **「官方模型」改名「当前模型」**：指的是你这条会话正在用的模型，不是 DeepSeek 官方账号的模型。
+- **反馈按钮带参数了**：复制脱敏诊断时附上全部切割参数（含与默认的差异）、刀法统计、段与卡片长度分布、重算面、每类被拒原因次数、本地脚本卡片指标；仍然自动抹掉家目录、用户名、会话 ID、token 与绝对路径，只有数字，不含聊天正文。
+- **新增公式与实测文档**：仓库 docs/MATH.md 写清了回本公式、刀长怎么定、选行模型和本机实测数据，README 里能点过去。
+- 修：诊断里的插件版本以前一直读成空，现在显示正确。
+
+**参考文献**
+
+- Gaia Research, *The Context Compaction Curve* — 缓存命中 / 未命中的价格倍数与冷启动成本：https://research.gaiaskilltree.com/blog/context-compaction-curve
+- formalRAG, *Context Selection: Submodular Coverage, MMR, and Determinantal Point Processes* — 次模覆盖与贪心近似：https://www.formalrag.com/topics/context-selection-submodular-dpp/
+- Carbonell & Goldstein (1998), *The Use of MMR, Diversity-Based Reranking for Reordering Documents* — 去重公式（MMR）
+- Nemhauser, Wolsey & Fisher (1978), *An analysis of approximations for maximizing submodular set functions* — 贪心的 (1−1/e) 保证
+- Synthorai, *Context Compaction Cost: Measuring the Turns to Payback* — 回本的实测口径：https://synthorai.io/blog/context-compaction-cost/
+- Jiang et al. (2023), *LLMLingua: Compressing Prompts for Accelerated Inference* (arXiv:2310.05736) — 预算内的信息取舍：https://arxiv.org/abs/2310.05736
+
 # 1.3.32（2026-11-26 更新日志：右上角一点就开，浮在面板上方）
 
 > 1.3.26–1.3.31 这六个版本都只在本地验证、**没有发布**，内容合并进这一版，不再分别占条目。

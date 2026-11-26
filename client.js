@@ -59,7 +59,8 @@ window.__ModuleLoader__.load({
       mergeCooldownMs: ["中刀冷却（毫秒）", "两刀中刀之间的最小间隔"],
       officialAbove: ["大刀启用线", "超过它且没有可切段时让大刀接手（模型或脚本）"],
       officialCooldownMs: ["大刀冷却（毫秒）", "两次大压缩的最小间隔"],
-      officialScript: ["大刀归纳器", "0 = 官方模型摘要，1 = 本地脚本卡片"],
+      officialScript: ["大刀归纳器", "0 = 当前模型摘要，1 = 本地脚本卡片"],
+  scriptEngine: ["本地脚本版本", "1 = 新版（价值密度选行 + 去重），0 = 稳定版（按原文顺序）"],
       paybackTurns: ["小刀回本轮数", "重算超过 净赚×它 就不切"],
       spanBandRatio: ["动态刀长比例", "单刀上限 = 上下文 × 它"],
       keepRounds: ["保留原文轮数", "最近几轮留原文"],
@@ -464,7 +465,7 @@ window.__ModuleLoader__.load({
       "spine.knifeShortBig": "大刀",
       "spine.knifeShortOfficial": "官方",
       "spine.knifeShortPlugin": "旧卡",
-      "spine.knifeBigHint": "本插件让大刀接手（官方模型或本地脚本），算我们的刀",
+      "spine.knifeBigHint": "本插件让大刀接手（当前模型或本地脚本），算我们的刀",
       "spine.knifeOfficialHint": "插件接管前后的原生压缩",
       "spine.knifeStats": "刀法统计",
       "spine.colKnife": "刀法",
@@ -472,20 +473,28 @@ window.__ModuleLoader__.load({
       "spine.colSaved": "切掉",
       "spine.colShare": "占比",
       "spine.colAvg": "平均",
-      "spine.knifeNote": "小刀、中刀、大刀都是本插件切的（大刀默认借官方摘要，也可切成本地脚本）；官方 = 插件接管之前或让位时的原生压缩，旧卡片 = 早期没记刀名的卡。",
+      "spine.knifeNote": "小刀、中刀、大刀都是本插件切的（大刀默认让当前模型归纳，也可切成本地脚本）；官方 = 插件接管之前或让位时的原生压缩，旧卡片 = 早期没记刀名的卡。",
       "spine.experimental": "实验性",
+      "spine.lineClashHint": "中刀永远轮不到：中刀启用线必须低于大刀启用线，把中刀调低或大刀调高。当前",
       "spine.enableMid": "启用中刀（合并整张卡片，默认关闭）",
       "spine.groupSmallHint": "抢在官方压缩之前先切尾巴，一行内容都不丢。",
       "spine.groupMidHint": "上下文很大时，把连续的老卡片并成一张；不省钱就不动。",
-      "spine.groupBigHint": "前两把刀都切不动时，才让大刀接手：默认请官方模型归纳，也可切成零模型调用的本地脚本。",
+      "spine.groupBigHint": "前两把刀都切不动时，才让大刀接手：默认用当前模型归纳，也可切成零模型调用的本地脚本。",
       "spine.scriptChoiceTitle": "大刀怎么归纳",
-      "spine.scriptModel": "官方模型",
+      "spine.groupScript": "本地脚本",
+      "spine.groupScriptHint": "小刀、中刀、大刀的本地卡片都按这个版本生成。新版不是改刀法，是改「预算里留哪几行」。",
+      "spine.engineTitle": "本地脚本版本",
+      "spine.engineStable": "稳定版",
+      "spine.engineStableHint": "按原文顺序先到先得（1.3.32 的行为）：结果可预期，但预算一满就丢后段的行。",
+      "spine.engineExplore": "新版（探索）",
+      "spine.engineExploreHint": "按价值密度选行 + 去重：同样预算下失败的报错、最后一条约束更不容易被裁掉。实测缺的事实从 7 条降到 3 条。",
+      "spine.scriptModel": "当前模型",
       "spine.scriptLocal": "本地脚本",
-      "spine.scriptModelHint": "用官方模型把整段归纳成摘要：更连贯、更会取舍，但会多发一次模型请求，有 LLM 成本。",
+      "spine.scriptModelHint": "用你当前正在用的模型把整段归纳成摘要（不是 DeepSeek 官方账号的模型）：更连贯、更会取舍，但会多发一次模型请求，有 LLM 成本。",
       "spine.diagTitle": "提交问题日志",
       "spine.diagCopy": "复制脱敏诊断",
       "spine.diagIssue": "去 GitHub 提 issue",
-      "spine.diagHint": "诊断只读本机日志，已自动抹掉家目录、用户名、会话 id、token 与绝对路径；复制后可自行删改再贴。",
+      "spine.diagHint": "诊断只读本机日志，附上全部切割参数、刀法统计与本地脚本卡片指标；已自动抹掉家目录、用户名、会话 id、token 与绝对路径，只有数字，不含聊天正文。复制后可自行删改再贴。",
       "spine.diagLoading": "收集中…",
       "spine.scriptLocalHint": "用本地脚本按规则摘录同一段：零模型调用、可按 seq 回读核对；归纳能力弱于模型，卡片不完整时会拒绝，不会偷偷改用模型。",
       "spine.scriptActive": "当前",
@@ -503,6 +512,8 @@ window.__ModuleLoader__.load({
       "spine.newsOpen": "收起本版更新",
       "spine.newsUnavailable": "更新日志读不到，显示的是包内自带要点",
       "spine.newsCross": "这次是跨版本升级，下面几版都算新内容",
+      "spine.newsHistory": "历史版本",
+      "spine.newsHistoryHide": "收起历史版本",
       "spine.docsRepo": "仓库",
       "spine.docsIssues": "反馈",
       "spine.version": "版本",
@@ -529,7 +540,7 @@ window.__ModuleLoader__.load({
       "spine.presetSmallFirst": "小刀优先",
       "spine.presetSmallFirstHint": "小刀多切、大刀推迟到 60 万：细节更连续，上下文会更大",
       "spine.presetBigFirst": "大刀优先",
-      "spine.presetBigFirstHint": "小刀少切、20 万就让官方大刀收：上下文压得低，细节靠摘要",
+      "spine.presetBigFirstHint": "小刀少切、20 万就让大刀收：上下文压得低，细节靠摘要",
       "spine.presetDraftHint": "预设只填草稿，点保存才生效",
       "spine.expandRest": "展开其余",
       "spine.onlyRecent": "只看最近",
@@ -669,15 +680,22 @@ window.__ModuleLoader__.load({
       "spine.knifeShortBig": "big",
       "spine.knifeShortOfficial": "official",
       "spine.knifeShortPlugin": "legacy",
-      "spine.knifeBigHint": "This plugin hands the span to the big cut (official model or local script)",
+      "spine.knifeBigHint": "This plugin hands the span to the big cut (your current model or a local script)",
       "spine.scriptChoiceTitle": "How the big cut summarizes",
-      "spine.scriptModel": "Official model",
+      "spine.groupScript": "Local script",
+      "spine.groupScriptHint": "Every local card (small, merge, big cut) follows this version. It changes which lines survive the budget, not the knives.",
+      "spine.engineTitle": "Local script version",
+      "spine.engineStable": "Stable",
+      "spine.engineStableHint": "First come, first kept (1.3.32 behavior): predictable, but later lines get dropped once the budget fills.",
+      "spine.engineExplore": "New (experimental)",
+      "spine.engineExploreHint": "Value-density selection with de-duplication: same budget keeps more failures and the last constraint. Measured: missing facts 7 → 3.",
+      "spine.scriptModel": "Current model",
       "spine.scriptLocal": "Local script",
-      "spine.scriptModelHint": "The official model writes a coherent summary and selects what matters, but it makes one extra LLM request.",
+      "spine.scriptModelHint": "The model you are currently using writes the summary — not a DeepSeek official-account model. It is more coherent and selective, but makes one extra LLM request.",
       "spine.diagTitle": "Report a problem",
       "spine.diagCopy": "Copy sanitized diagnostics",
       "spine.diagIssue": "Open a GitHub issue",
-      "spine.diagHint": "Diagnostics are read-only and sanitized: home directory, user name, session ids, tokens and absolute paths are stripped. Edit before posting.",
+      "spine.diagHint": "Diagnostics include every cutting parameter, per-knife stats and local-script card metrics, all sanitized: home directory, user name, session ids, tokens and absolute paths are stripped. Edit before posting.",
       "spine.diagLoading": "Collecting…",
       "spine.scriptLocalHint": "A local script extracts the same span with zero model calls and seq-based recall. It is less semantic; an incomplete card is refused and never falls back to the model silently.",
       "spine.scriptActive": "Active",
@@ -689,12 +707,13 @@ window.__ModuleLoader__.load({
       "spine.colSaved": "cut",
       "spine.colShare": "share",
       "spine.colAvg": "avg",
-      "spine.knifeNote": "Small, merge, and big cuts are all ours (big borrows the official summarizer). Official = native compaction before takeover or while standing down; legacy = early cards without a knife label.",
+      "spine.knifeNote": "Small, merge, and big cuts are all ours (big summarises with your current model by default, or a local script). Official = native compaction before takeover or while standing down; legacy = early cards without a knife label.",
       "spine.experimental": "experimental",
+      "spine.lineClashHint": "The merge cut never gets a turn: it must start below the big-knife line — lower it or raise the big-knife line. Current",
       "spine.enableMid": "Enable the merge cut (joins whole cards, off by default)",
       "spine.groupSmallHint": "Cuts the tail before official compaction, dropping nothing.",
       "spine.groupMidHint": "When the context is huge, joins continuous old cards; skips unless it pays off.",
-      "spine.groupBigHint": "Only when the first two knives cannot cut does the big cut take over: the official model by default, or a zero-LLM local script.",
+      "spine.groupBigHint": "Only when the first two knives cannot cut does the big cut take over: your current model by default, or a zero-LLM local script.",
       "spine.docs": "Docs",
       "spine.docsHint": "open or copy a path",
       "spine.docsReadme": "README",
@@ -707,6 +726,8 @@ window.__ModuleLoader__.load({
       "spine.newsOpen": "hide what's new",
       "spine.newsUnavailable": "changelog unreadable; showing the digest bundled in the client",
       "spine.newsCross": "Several versions behind: every entry below is new",
+      "spine.newsHistory": "Older versions",
+      "spine.newsHistoryHide": "Hide older versions",
       "spine.docsRepo": "Repo",
       "spine.docsIssues": "Issues",
       "spine.version": "Version",
@@ -910,6 +931,8 @@ window.__ModuleLoader__.load({
       ".sp-news-top{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap}",
       ".sp-news-title-main{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}",
       ".sp-news-ok{flex:none;font-size:11px;padding:2px 9px;margin-left:auto}",
+      // 入口只给最新版：历史版本藏在下面这个按钮里，点开才列旧版本。
+      ".sp-news-history{margin-top:10px;font-size:11px;padding:3px 10px;color:var(--dsw-alias-label-secondary)}",
       // 内容高到读不完时自己滚：限高 + 细滚动条，滚轮hover在这块上就不会带动整页。
       ".sp-news-body{max-height:min(66vh,640px);overflow-y:auto;overscroll-behavior:contain;padding-right:6px;scrollbar-width:thin}",
       ".sp-news-body::-webkit-scrollbar{width:8px}",
@@ -972,10 +995,18 @@ window.__ModuleLoader__.load({
         id: "big",
         title: "spine.knifeBig",
         hint: "spine.groupBigHint",
-        // 大刀怎么归纳：官方模型摘要 / 本地脚本卡片。两选一，写进 officialScript。
+        // 大刀怎么归纳：当前模型摘要 / 本地脚本卡片。两选一，写进 officialScript。
         // 不是滑块：它不是连续量，也没法「拖一半」。
         choice: "officialScript",
         keys: ["officialAbove", "officialCooldownMs", "bigGate", "keepRounds", "keepRoundTokens"],
+      },
+      {
+        id: "script",
+        title: "spine.groupScript",
+        hint: "spine.groupScriptHint",
+        // 本地脚本版本：小刀、中刀、大刀的卡片都吃这个开关。
+        choice: "scriptEngine",
+        keys: [],
       },
       // 实验性功能放最后：默认收起也不抢眼，开开关才生效。
       {
@@ -983,6 +1014,8 @@ window.__ModuleLoader__.load({
         title: "spine.knifeMerge",
         hint: "spine.groupMidHint",
         experimental: true,
+        // 实验性：默认收起，点标题再展开——不占地方，也不会让人误开。
+        collapsible: true,
         enable: "deepCutAbove",
         on: MID_ON,
         keys: ["mergeMaxSpan", "mergeBreakEven", "mergeCooldownMs", "deepCutAbove"],
@@ -1038,8 +1071,8 @@ window.__ModuleLoader__.load({
     }
 
     /** 一行「范围 … · 常用 …」，0 有特殊含义的旋钮再补一句。 */
-    function knobRange(t, name) {
-      const meta = KNOB_META[name];
+    function knobRange(t, name, metaOverride) {
+      const meta = metaOverride || KNOB_META[name];
       if (!meta) return "";
       const span = (from, to) => fmtKnobValue(name, from) + "–" + fmtKnobValue(name, to);
       let text = t("spine.rangeLabel") + " " + span(meta.min, meta.max)
@@ -1513,6 +1546,20 @@ window.__ModuleLoader__.load({
      */
     const CLIENT_NEWS = [
       {
+        version: "1.4.0",
+        date: "2026-11-26",
+        title: "本地脚本可选版本，中刀归队，反馈能带参数",
+        bullets: [
+          "本地脚本分「新版」和「稳定版」两个版本，默认用新版；小刀、中刀、大刀共用这一个开关。",
+          "新版优先保住报错、路径、命令和你最后说的约束，同一段报错只留一条。",
+          "同样预算实测：丢掉的关键事实从 7 条降到 3 条，保住的有用行从 47 条升到 52 条。",
+          "稳定版就是以前的按顺序留行，想要「每次同一张卡」就切回去。",
+          "中刀组默认收起了；中刀和大刀的启用线互相咬住，存反了会直接提醒「中刀永远轮不到」。",
+          "「官方模型」改叫「当前模型」，避免误会成 DeepSeek 官方账号的模型。",
+          "反馈按钮能带全部切割参数和刀法统计，仍然只有数字，不带一句聊天正文。",
+        ],
+      },
+      {
         version: "1.3.32",
         date: "2026-11-26",
         title: "更新日志：右上角一点就开，浮在面板上方",
@@ -1563,7 +1610,7 @@ window.__ModuleLoader__.load({
         title: "面板里可以直接报问题",
         bullets: [
           "调试卡新增「复制脱敏诊断」与「去 GitHub 提 issue」，诊断会自动抹掉家目录、会话 id 和密钥。",
-          "大刀的说明文字改对了：它既可以用官方模型，也可以切成本地脚本。",
+          "大刀的说明文字改对了：它既可以用当前模型，也可以切成本地脚本。",
         ],
       },
       {
@@ -1578,9 +1625,9 @@ window.__ModuleLoader__.load({
       {
         version: "1.3.20",
         date: "2026-11-24",
-        title: "大刀可选官方模型或本地脚本",
+        title: "大刀可选当前模型或本地脚本",
         bullets: [
-          "大刀默认请官方模型归纳，也可以在面板里切成零模型调用的本地脚本，不花钱。",
+          "大刀默认用当前模型归纳，也可以在面板里切成零模型调用的本地脚本，不花钱。",
           "卡片和面板的时间都改成年月日完整显示，跨天不再只剩时分秒。",
           "顶栏右上角开始显示版本号。",
         ],
@@ -1640,15 +1687,17 @@ window.__ModuleLoader__.load({
     }
 
     function NewsCard(props) {
-      const { t, news, version, open, onClose, source } = props;
+      const { t, news, version, open, onClose, source, historyOpen, onToggleHistory } = props;
       const entries = news && Array.isArray(news.entries) ? news.entries : [];
       if (!open || !entries.length) return null;
-      // 手动点开时显示全部条目，不做「已看过就过滤」——过滤只归 newsShouldAuto 管，
+      // 手动点开时不做「已看过就过滤」——过滤只归 newsShouldAuto 管，
       // 否则本机记过版本之后，按钮点了打开也是空的，看起来像没反应。
       const sorted = entries.slice().sort((a, b) => compareVersion(a.version, b.version));
-      const shown = sorted.slice(0, 12);
+      // 入口只给最新版：默认只画最新这一条，历史版本点「历史版本」再展开
+      //（旧版本本来就都在仓库 CHANGELOG 里，不占主视觉）。
+      const shown = historyOpen ? sorted.slice(0, 12) : sorted.slice(0, 1);
       // 当前版本以 docs.version 为准，读不到才退回第一条（已按版本号降序，一定是最新的）。
-      const current = String(version || (shown[0] && shown[0].version) || "");
+      const current = String(version || (sorted[0] && sorted[0].version) || "");
       return h("div", { className: "sp-card sp-news", "data-news": current, "data-news-source": source || "host" },
         h("div", { className: "sp-news-top" },
           h("span", { className: "sp-news-title-main" }, t("spine.newsTitle")),
@@ -1667,7 +1716,14 @@ window.__ModuleLoader__.load({
           entry.title ? h("div", { className: "sp-news-title" }, entry.title) : null,
           Array.isArray(entry.bullets) && entry.bullets.length
             ? h("ul", { className: "sp-news-list" }, entry.bullets.slice(0, 5).map((text, i) => h("li", { key: i }, text)))
-            : null))));
+            : null))),
+        sorted.length > 1
+          ? h("button", {
+            className: "sp-btn sp-news-history",
+            "data-news-history": historyOpen ? "hide" : "show",
+            onClick: () => onToggleHistory && onToggleHistory(),
+          }, (historyOpen ? t("spine.newsHistoryHide") : t("spine.newsHistory")) + "（" + sorted.length + "）")
+          : null);
     }
 
     function renderPanel(props, state, scope, bump, setScope, mid, ui) {
@@ -1688,6 +1744,31 @@ window.__ModuleLoader__.load({
       const global = (state && state.global) || {};
       const sessionCuts = Array.isArray(state && state.cuts) ? state.cuts : [];
       const settings = (state && state.settings) || {};
+      /**
+       * 刀的上下线要互相咬住，不能各调各的：
+       * - 中刀启用线（deepCutAbove）必须**低于**大刀启用线（officialAbove）——
+       *   否则上下文一过大刀先出手，中刀永远轮不到，开了等于没开；
+       * - 大刀启用线反过来不能低于中刀启用线，两条线至少差 1 万 token。
+       * 这里只改滑块的可拖范围（加提示），不动已存的值：改值仍然要用户自己拖。
+       */
+      const boundedMeta = (name) => {
+        const base = KNOB_META[name];
+        if (!base) return base;
+        const midLine = Number(settings.deepCutAbove) || 0;
+        const bigLine = Number(settings.officialAbove) || 0;
+        const out = { ...base };
+        if (name === "officialAbove" && midLine > 0) {
+          out.min = Math.min(base.max, Math.max(base.min, midLine + 10000));
+        }
+        if (name === "deepCutAbove" && bigLine > 0) {
+          out.max = Math.max(base.min, Math.min(base.max, bigLine - 10000));
+        }
+        return out;
+      };
+      const midEnabled = Number(settings.deepCutAbove) > 0;
+      const bigEnabled = Number(settings.officialAbove) > 0;
+      // 已经存反了（中刀线 ≥ 大刀线）就直说会怎样，而不是让两个滑块各显示各的。
+      const knifeLineClash = midEnabled && bigEnabled && Number(settings.deepCutAbove) >= Number(settings.officialAbove);
       const docs = (state && state.docs) || {};
       const allKnives = global.knives || {};
       const subtitle = all
@@ -1938,15 +2019,41 @@ window.__ModuleLoader__.load({
       // 并保留滑块可用——不能因为宿主还没重启就把整片控件锁死。
       const bridged = Boolean(store && cfg && cfg.status === "ready");
       /**
-       * 大刀归纳器的两选一：官方模型 / 本地脚本。
+       * 两选一的表：大刀归纳器（模型/脚本）、本地脚本版本（稳定/新版）。
+       * 都只写草稿，点了保存才落盘——脚本版本会直接改变卡片内容，不该偷偷换。
+       */
+      const CHOICE_TABLE = {
+        officialScript: {
+          title: "spine.scriptChoiceTitle",
+          options: [
+            { value: 0, label: "spine.scriptModel", hint: "spine.scriptModelHint", key: "model" },
+            { value: 1, label: "spine.scriptLocal", hint: "spine.scriptLocalHint", key: "local" },
+          ],
+        },
+        scriptEngine: {
+          title: "spine.engineTitle",
+          // 读不到时按默认值高亮：引擎默认就是 1（新版），面板不能显示成「稳定版」。
+          fallback: 1,
+          options: [
+            { value: 0, label: "spine.engineStable", hint: "spine.engineStableHint", key: "stable" },
+            { value: 1, label: "spine.engineExplore", hint: "spine.engineExploreHint", key: "explore" },
+          ],
+        },
+      };
+
+      /**
+       * 大刀归纳器的两选一：当前模型 / 本地脚本。
        *
        * 不做成滑块，因为它不是连续量；也不塞进预设档——预设是「刀法策略」，
        * 而这个选项会直接决定一次大刀花不花钱，得让人自己点。
        * 和别的旋钮一样只写草稿，点了保存才落盘。
        */
       const choiceGroup = (name) => {
+        const table = CHOICE_TABLE[name] || CHOICE_TABLE.officialScript;
+        const title = t(table.title);
         const now = currentOf(name);
-        const picked = Number(now) > 0 ? 1 : 0;
+        const raw = now === undefined || now === null || now === "" ? table.fallback : Number(now);
+        const picked = Number(raw) > 0 ? 1 : 0;
         const fixed = Boolean(cfg && cfg.fixed && Object.prototype.hasOwnProperty.call(cfg.fixed, name));
         // 和旋钮同一套判定：桥的草稿，或宿主表单上已改未存，都算「改了还没保存」。
         const field = model && typeof model.field === "function"
@@ -1955,13 +2062,15 @@ window.__ModuleLoader__.load({
         const dirty = Boolean(cfg && (cfg.draft && Object.prototype.hasOwnProperty.call(cfg.draft, name)
           || (store && typeof store.dirty === "function" && store.dirty(name))))
           || Boolean(field.overridden);
-        const options = [
-          { value: 0, label: t("spine.scriptModel"), hint: t("spine.scriptModelHint"), key: "model" },
-          { value: 1, label: t("spine.scriptLocal"), hint: t("spine.scriptLocalHint"), key: "local" },
-        ];
+        const options = table.options.map((option) => ({
+          value: option.value,
+          label: t(option.label),
+          hint: t(option.hint),
+          key: option.key,
+        }));
         return h("div", { className: "sp-field sp-choice" },
           h("div", { className: "sp-field-head" },
-            h("span", { className: "sp-field-title" }, t("spine.scriptChoiceTitle")),
+            h("span", { className: "sp-field-title" }, title),
             dirty ? h("span", { className: "sp-tag" }, t("spine.scriptDraft")) : null,
             fixed ? h("span", { className: "sp-tag sp-tag-warn", title: t("spine.cfgFixed") }, t("spine.fixedTag")) : null),
           h("div", { className: "sp-choice-row" }, options.map((option) => h("button", {
@@ -1996,8 +2105,8 @@ window.__ModuleLoader__.load({
           name,
           label: label[0],
           hint: label[1],
-          range: knobRange(t, name),
-          meta: KNOB_META[name],
+          range: knobRange(t, name, boundedMeta(name)),
+          meta: boundedMeta(name),
           disabled: !writable || saving,
           overridden: (Boolean(cfg && store && store.dirty(name))) || Boolean(field.overridden),
           fixed,
@@ -2013,7 +2122,7 @@ window.__ModuleLoader__.load({
             bump();
           },
           onToggle: (checked) => {
-            const meta = KNOB_META[name] || {};
+            const meta = boundedMeta(name) || {};
             const next = checked ? String(meta.onValue ?? meta.min) : "0";
             if (bridged) store.edit(name, next);
             else actions.edit?.(name, next);
@@ -2223,34 +2332,52 @@ window.__ModuleLoader__.load({
             },
           }, t("discard"))),
         channelLine,
-        KNOB_GROUPS.map((group) => h("div", { key: group.id, className: "sp-group" },
-          h("div", { className: "sp-group-title" },
+        KNOB_GROUPS.map((group) => {
+          const head = [
             t(group.title),
-            group.experimental ? h("span", { className: "sp-tag sp-tag-warn" }, t("spine.experimental")) : null),
-          group.hint ? h("div", { className: "sp-field-hint", style: { marginBottom: "8px" } }, t(group.hint)) : null,
-          group.enable
-            ? h(MidSwitch, {
-              t,
-              on: Number(currentOf(group.enable)) > 0,
-              disabled: !writable || saving,
-              ask: Boolean(mid && mid.ask),
-              ack: Boolean(mid && mid.ack),
-              onOpen: () => mid?.open?.(),
-              onClose: () => mid?.close?.(),
-              onAck: (value) => mid?.setAck?.(value),
-              // 开关不走草稿：关掉是安全动作，改完立刻写文件，别让「关了但没保存」再骗一次人。
-              onOff: () => {
-                if (bridged) { void store.saveNow({ [group.enable]: 0 }); return; }
-                actions.edit?.(group.enable, "0"); actions.save?.(); bump();
-              },
-              onEnable: () => {
-                if (bridged) { void store.saveNow({ [group.enable]: Number(group.on) }); mid?.close?.(); return; }
-                actions.edit?.(group.enable, String(group.on)); actions.save?.(); mid?.close?.(); bump();
-              },
-            })
-            : null,
-          group.choice ? choiceGroup(group.choice) : null,
-          h("div", { className: "sp-fields" }, group.keys.map(knob)))));
+            group.experimental ? h("span", { className: "sp-tag sp-tag-warn" }, t("spine.experimental")) : null,
+            group.collapsible ? h(Chevron) : null,
+          ];
+          const body = [
+            group.hint ? h("div", { className: "sp-field-hint", style: { marginBottom: "8px" } }, t(group.hint)) : null,
+            group.enable
+              ? h(MidSwitch, {
+                t,
+                on: Number(currentOf(group.enable)) > 0,
+                disabled: !writable || saving,
+                ask: Boolean(mid && mid.ask),
+                ack: Boolean(mid && mid.ack),
+                onOpen: () => mid?.open?.(),
+                onClose: () => mid?.close?.(),
+                onAck: (value) => mid?.setAck?.(value),
+                // 开关不走草稿：关掉是安全动作，改完立刻写文件，别让「关了但没保存」再骗一次人。
+                onOff: () => {
+                  if (bridged) { void store.saveNow({ [group.enable]: 0 }); return; }
+                  actions.edit?.(group.enable, "0"); actions.save?.(); bump();
+                },
+                onEnable: () => {
+                  if (bridged) { void store.saveNow({ [group.enable]: Number(group.on) }); mid?.close?.(); return; }
+                  actions.edit?.(group.enable, String(group.on)); actions.save?.(); mid?.close?.(); bump();
+                },
+              })
+              : null,
+            group.choice ? choiceGroup(group.choice) : null,
+            // 中刀线 ≥ 大刀线时直说后果：中刀永远轮不到，开了等于没开。
+            knifeLineClash && (group.id === "mid" || group.id === "big")
+              ? h("div", { className: "sp-warn", "data-knife-clash": "1" },
+                h("div", { className: "sp-warn-body" },
+                  t("spine.lineClashHint")
+                  + " " + fmtTokens(Number(settings.deepCutAbove) || 0)
+                  + " ≥ " + fmtTokens(Number(settings.officialAbove) || 0)))
+              : null,
+            group.keys.length ? h("div", { className: "sp-fields" }, group.keys.map(knob)) : null,
+          ];
+          return group.collapsible
+            ? h("details", { key: group.id, className: "sp-group sp-details", "data-group": group.id },
+              h("summary", { className: "sp-group-title" }, head), body)
+            : h("div", { key: group.id, className: "sp-group" },
+              h("div", { className: "sp-group-title" }, head), body);
+        }));
       const docsCard = h("details", { className: "sp-details sp-card" },
         h("summary", { className: "sp-card-title" }, t("spine.docs"),
           h("span", { className: "sp-card-sub" }, t("spine.docsHint")),
@@ -2352,6 +2479,8 @@ window.__ModuleLoader__.load({
             source: panelNews.source,
             version: versionValue,
             open: Boolean(ui && ui.newsOpen),
+            historyOpen: Boolean(ui && ui.newsHistory),
+            onToggleHistory: ui && ui.toggleNewsHistory,
             onClose: ui && ui.closeNews,
           })),
         h("div", { className: "sp-grid" }, kpis),
@@ -2402,6 +2531,8 @@ window.__ModuleLoader__.load({
       // 配置通道：store 只建一次，订阅它拿快照；load 只在挂载时跑一次。
       // 本版更新：升级后第一次自动展开；之后收起，点顶栏版本号随时再打开。
       const [newsToggle, setNewsToggle] = React.useState(null);
+      // 更新日志默认只显示最新版；这个开关管「要不要把历史版本也摊开」。
+      const [newsHistory, setNewsHistory] = React.useState(false);
       const [store] = React.useState(() => createSettingsStore());
       const cfg = React.useSyncExternalStore(store.subscribe, store.getSnapshot);
       const panelSid = state && typeof state === "object" && typeof state.sid === "string" ? state.sid : "";
@@ -2429,7 +2560,9 @@ window.__ModuleLoader__.load({
           // 更新日志的状态必须放在 ui 里：面板读的是 ui.newsOpen / ui.toggleNews。
           // 之前放进第 6 个参数（mid），于是 open 恒为 false、按钮点了没反应。
           newsOpen,
-          toggleNews: () => setNewsToggle(!newsOpen),
+          newsHistory,
+          toggleNewsHistory: () => setNewsHistory((value) => !value),
+          toggleNews: () => { setNewsHistory(false); setNewsToggle(!newsOpen); },
           closeNews: (version) => { writeSeenVersion(version || docsVersion); setNewsToggle(false); },
           cfg,
           store,

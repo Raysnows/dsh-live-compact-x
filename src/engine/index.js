@@ -744,7 +744,8 @@ export function selectNewestChunk(session, measurement, key = DEFAULT_KEY, conte
     }
     return bits.join("\n");
   };
-  const extras = { jobs: context.jobs || [] };
+  // 本地脚本版本随设置走：小刀/中刀/大刀的卡片都吃同一个开关。
+  const extras = { jobs: context.jobs || [], ranked: Number(settings.scriptEngine) > 0 };
   const items = nodes.map((seq, index) => {
     const event = session.eventAt(seq);
     const type = event?.type === "user/message" ? "user"
@@ -3096,7 +3097,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
   }
 
   /**
-   * 大刀的归纳器：0 = 官方模型摘要（super），1 = 本地脚本卡片。
+   * 大刀的归纳器：0 = 当前模型摘要（super，用会话当前模型），1 = 本地脚本卡片。
    *
    * 为什么要有脚本这条路：大刀一次吃掉的是几十 k 到几十万 token 的整段，官方摘要
    * 一次就要把这整段再跑一遍模型——最贵的一刀恰好发生在最该省钱的时候。脚本模式
@@ -3169,13 +3170,25 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
     }
     let card;
     try {
-      card = buildCard(joined, "", spans, { keepBudget: scriptKeepBudget(joined) });
+      card = buildCard(joined, "", spans, {
+        keepBudget: scriptKeepBudget(joined),
+        ranked: Number(this.settingsFor(agent).scriptEngine) > 0,
+      });
     } catch (error) {
       this.recordDecision(state, { phase: "official-summary", result: "failed", summarizer: "script" });
       throw new Error("spine: local script summarizer could not build a card: " + String(error?.message ?? error));
     }
     if (!card || card.ok !== true) {
-      this.recordDecision(state, { phase: "official-summary", result: "card-incomplete", summarizer: "script" });
+      // 把「差在哪」记下来：缺失条数与段长是调 buildCard / Kept 预算的唯一依据，
+      // 只在日志里留一句 card-incomplete，收到反馈也不知道该放宽多少。
+      this.recordDecision(state, {
+        phase: "official-summary",
+        result: "card-incomplete",
+        summarizer: "script",
+        spanChars: joined.length,
+        missing: Array.isArray(card?.missing) ? card.missing.length : 0,
+        hardCount: Array.isArray(card?.hardLines) ? card.hardLines.length : 0,
+      });
       this.ctx.logger?.warn?.("spine: local script summarizer produced an incomplete card; leaving the span untouched");
       throw new Error("spine: local script summarizer produced an incomplete card");
     }
@@ -3190,7 +3203,18 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
       this.recordDecision(state, { phase: "official-summary", result: "not-smaller", summarizer: "script" });
       throw new Error(`spine: local script summary is not smaller than the shadowed content (${text.length} >= ${joined.length})`);
     }
-    this.recordDecision(state, { phase: "official-summary", result: "usable", summarizer: "script" });
+    // 成功也要留指标：卡片占原文多少、硬事实几条、有没有降级补事实。
+    // 这几项是「本地脚本够不够强」的唯一量化证据，反馈日志里必须带上。
+    this.recordDecision(state, {
+      phase: "official-summary",
+      result: "usable",
+      summarizer: "script",
+      spanChars: joined.length,
+      cardChars: text.length,
+      hardCount: card.hardCount ?? (Array.isArray(card.hardLines) ? card.hardLines.length : 0),
+      missing: Array.isArray(card.missing) ? card.missing.length : 0,
+      degraded: card.degraded === true,
+    });
     const block = { type: "text", text };
     return { summary: [block], provider: "local", model: "spine-extract", rawOutput: [block] };
   }
@@ -3203,5 +3227,7 @@ export default class SpineCompactionEngine extends BasicCompactionEngine {
 function scriptKeepBudget(spanText) {
   const chars = String(spanText || "").length;
   if (!chars) return undefined;
-  return Math.min(32000, Math.max(8000, Math.round(chars * 0.35)));
+  // 段越长硬事实越多：比例 0.4、上限 40000 字符（约 25k token，仍远小于被切的整段），
+  // 让长任务的脚本卡也能逐字保住更多约束与路径。
+  return Math.min(40000, Math.max(8000, Math.round(chars * 0.4)));
 }

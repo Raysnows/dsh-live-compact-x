@@ -8,6 +8,8 @@
  * Open background jobs do not delay the cut; the card records that they were still running.
  */
 
+import { selectLines } from "./select.js";
+
 const MARK = "Spine extract.";
 const KEEP_BUDGET = 8000;
 const TEXTUAL = new Set(["text", "input_text", "output_text"]);
@@ -1507,28 +1509,67 @@ export function buildCard(
   let used = 0;
   let omittedHard = 0;
 
-  for (const item of hard) {
-    if (!sourceById.has(item.sourceId)) continue;
-    if (used + item.line.length > keepBudget) {
-      omittedHard += 1;
-      continue;
+  // 脚本卡走「带预算的选优」（docs/MATH.md §2）：候选行按 价值密度 × 去重 排序，
+  // 不再按原文顺序先到先得——否则后段的失败原因和最后一条约束总是先被裁掉。
+  // 其余路径保持原来的先到先得，行为不变。
+  const ranked = extras?.ranked === true;
+  const rankedItems = [];
+  if (ranked) {
+    const seen = new Set();
+    for (const item of hard) {
+      if (!sourceById.has(item.sourceId)) continue;
+      if (seen.has(item.line)) continue;
+      seen.add(item.line);
+      rankedItems.push({ text: item.line, required: true, item });
     }
-    kept.push(item);
-    used += item.line.length;
+    for (const line of [...new Set(split.covered)]) {
+      if (seen.has(line)) continue;
+      const source = sourceForLine(line, visible);
+      if (!sourceById.has(source.sourceId)) continue;
+      seen.add(line);
+      rankedItems.push({ text: line, required: false, item: { ...source, line } });
+    }
   }
 
   let deferred = 0;
-  const keptLines = new Set(kept.map((item) => item.line));
-  for (const line of [...new Set(split.covered)]) {
-    const source = sourceForLine(line, visible);
-    if (keptLines.has(line) || !sourceById.has(source.sourceId)) continue;
-    if (used + line.length > keepBudget) {
-      deferred += 1;
-      continue;
+  const keptLines = new Set();
+  if (ranked) {
+    const picked = selectLines(rankedItems, {
+      budget: keepBudget,
+      alpha: extras?.alpha,
+      lambda: extras?.lambda,
+    });
+    const keep = new Set(picked.kept);
+    rankedItems.forEach((candidate, index) => {
+      if (!keep.has(index)) return;
+      kept.push({ ...candidate.item, line: candidate.text });
+      keptLines.add(candidate.text);
+      used += candidate.text.length;
+    });
+    omittedHard = picked.requiredDropped;
+    deferred = Math.max(0, picked.dropped - picked.requiredDropped);
+  } else {
+    for (const item of hard) {
+      if (!sourceById.has(item.sourceId)) continue;
+      if (used + item.line.length > keepBudget) {
+        omittedHard += 1;
+        continue;
+      }
+      kept.push(item);
+      used += item.line.length;
     }
-    kept.push({ ...source, line });
-    keptLines.add(line);
-    used += line.length;
+    for (const item of kept) keptLines.add(item.line);
+    for (const line of [...new Set(split.covered)]) {
+      const source = sourceForLine(line, visible);
+      if (keptLines.has(line) || !sourceById.has(source.sourceId)) continue;
+      if (used + line.length > keepBudget) {
+        deferred += 1;
+        continue;
+      }
+      kept.push({ ...source, line });
+      keptLines.add(line);
+      used += line.length;
+    }
   }
 
   const usersText = earlierUsers(claims);

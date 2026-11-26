@@ -203,7 +203,7 @@ walk(tree, (entry) => {
   const cls = n && typeof n.props?.className === "string" ? n.props.className.split(" ") : [];
   if (cls.includes("sp-chev")) chevs += 1;
 });
-ok(chevs === 9, "可展开的地方都挂 ▸ 图标（3 张卡 + 6 行时间线）：" + chevs);
+ok(chevs === 10, "可展开的地方都挂 ▸ 图标（3 张卡 + 6 行时间线 + 中刀组）：" + chevs);
 ok(T.SPINE_CSS.includes(".sp-details[open]>summary .sp-chev{transform:rotate(90deg)}"), "展开后图标转 90°");
 saveBtn?.props?.onClick?.();
 ok(model.saved === 1, "没接配置桥时，保存仍然回落到宿主模型");
@@ -268,7 +268,7 @@ ok(uniqueSections[uniqueSections.length - 2] === "spine.docs", "文档与出处�
 ok(uniqueSections[uniqueSections.length - 1] === "spine.debug", "调试台在最后且收起：" + uniqueSections.join("|"));
 ok(uniqueSections.filter((sec) => sec === "spine.cutPoint").length === 1, "切点卡只出现一次");
 const knobOrder = T.KNOB_GROUPS.map((g) => g.id).join(",");
-ok(knobOrder === "small,big,mid", "中刀排到最后（" + knobOrder + "）");
+ok(knobOrder === "small,big,script,mid", "本地脚本组排在刀法之后、实验性中刀之前（" + knobOrder + "）");
 ok(T.KNOB_GROUPS.find((g) => g.id === "mid").experimental === true, "中刀标了实验性");
 ok(T.KNOB_GROUPS.find((g) => g.id === "mid").enable === "deepCutAbove", "中刀有独立开关（deepCutAbove）");
 
@@ -584,7 +584,25 @@ console.log("9f. 旋钮参考范围：每个刀把都写清楚范围 / 常用");
   ok(sliders.length === 15, "15 个旋钮都画成滑块（" + sliders.length + "）");
   const ratio = sliders.find((n) => n.props.max === "0.5");
   ok(ratio && ratio.props.step === "0.01", "比例旋钮按 0.01 步进");
-  ok(sliders.filter((n) => n.props.max === "650000").length === 2, "大刀启用线/中刀启用线最高 65 万");
+  // 上下线要在刀与刀之间咬住：大刀线最高 65 万；中刀线必须比大刀线低 1 万，
+  // 否则上下文过线时大刀先出手、中刀永远轮不到（开了等于没开）。
+  const bigSlider = sliders.find((n) => n.props["data-knob"] === "officialAbove");
+  const midSlider = sliders.find((n) => n.props["data-knob"] === "deepCutAbove");
+  ok(bigSlider && bigSlider.props.max === "650000", "大刀启用线最高 65 万");
+  ok(midSlider && Number(midSlider.props.max) === 220000 - 10000, "中刀启用线被大刀线压住（低 1 万）：" + (midSlider && midSlider.props.max));
+  const openBigState = { ...fakeState, settings: { ...fakeState.settings, officialAbove: 0 } };
+  const treeOpenBig = T.renderPanel({ t: (key) => key, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() }, openBigState, "session", () => {}, () => {});
+  const openSliders = [];
+  walk(treeOpenBig, (entry) => { const n = entry.node; if (n && n.type === "input" && n.props?.type === "range") openSliders.push(n); });
+  const openMid = openSliders.find((n) => n.props["data-knob"] === "deepCutAbove");
+  ok(openMid && openMid.props.max === "650000", "大刀没设线时中刀回到 65 万上限");
+  // 存反了要直说：中刀线 ≥ 大刀线时出警告，不再各显示各的
+  const clashState = { ...fakeState, settings: { ...fakeState.settings, deepCutAbove: 300000, officialAbove: 220000 } };
+  const treeClash = T.renderPanel({ t: (key) => key, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() }, clashState, "session", () => {}, () => {});
+  const clash = [];
+  walk(treeClash, (entry) => { const n = entry.node; if (n && n.props && n.props["data-knife-clash"] === "1") clash.push(n); });
+  ok(clash.length >= 1, "中刀线压过大刀线时给警告");
+  ok(texts(treeClash).includes("spine.lineClashHint"), "警告文案说明后果（中刀永远轮不到）");
   ok(sliders.filter((n) => n.props.max === "1000000").length === 1, "只有绝对停切线还允许到 100 万");
   const cool = sliders.filter((n) => n.props.min === "60000");
   ok(cool.length === 2, "两处冷却时间最低 1 分钟，拖不到 0（" + cool.length + "）");
@@ -836,8 +854,9 @@ console.log("9g2. 大刀归纳器：官方模型 / 本地脚本两选一");
     };
     const hints = nodesOfClass(treeScript, "sp-choice-hint");
     const nows = nodesOfClass(treeScript, "sp-choice-now");
-    ok(hints.length === 1, "「说明」一行是 sp-choice-hint（" + hints.length + "）");
-    ok(nows.length === 1, "「当前」一行是 sp-choice-now（" + nows.length + "）");
+    // 现在有两组两选一：大刀归纳器 + 本地脚本版本，各有一行说明和一行「当前」。
+    ok(hints.length === 2, "每组两选一都有一行 sp-choice-hint（" + hints.length + "）");
+    ok(nows.length === 2, "每组两选一都有一行 sp-choice-now（" + nows.length + "）");
     // 只看这颗「大刀归纳器」的容器：面板别处（旋钮说明、组提示）仍该用 sp-field-hint。
     const choiceBox = nodesOfClass(treeScript, "sp-choice")[0];
     ok(Boolean(choiceBox), "找得到大刀归纳器容器");
@@ -858,7 +877,7 @@ console.log("9g2. 大刀归纳器：官方模型 / 本地脚本两选一");
     // 默认档（officialScript=0）也要走同一套样式
     const defaultHints = nodesOfClass(treeS, "sp-choice-hint");
     const defaultNow = nodesOfClass(treeS, "sp-choice-now");
-    ok(defaultHints.length === 1 && defaultNow.length === 1, "默认档下也是 choice 专用的两行");
+    ok(defaultHints.length === 2 && defaultNow.length === 2, "默认档下两组都是 choice 专用的两行");
     const defaultBold = [];
     walk(defaultNow[0], (entry) => { if (entry.kind === "node" && entry.node.type === "b") defaultBold.push(entry.node); });
     ok(defaultBold.length === 1 && labelOf(defaultBold[0]) === "spine.scriptModel", "默认档的 b 是官方模型：" + labelOf(defaultBold[0]));
@@ -880,6 +899,17 @@ console.log("9g2. 大刀归纳器：官方模型 / 本地脚本两选一");
     ok(nowRule.includes("font-size:11.5px") && nowRule.includes("margin-top:4px"), "sp-choice-now 字号与上间距");
     ok(nowRule.includes("var(--dsw-alias-label-secondary)") && !nowRule.includes("dimmed"), "sp-choice-now 用 secondary，不是 dimmed");
     ok(boldRule.includes("var(--dsw-alias-label-primary)") && boldRule.includes("font-weight:600"), "当前值用 label-primary + 600 强调：" + boldRule.slice(0, 60));
+
+    // 本地脚本版本：默认高亮「新版（探索）」，切到稳定版时高亮换边
+    const engineBtns = nodesOfClass(treeScript, "sp-choice-btn").filter((node) => node.props["data-choice"] === "scriptEngine");
+    ok(engineBtns.length === 2, "本地脚本版本是两选一（" + engineBtns.length + "）");
+    ok(engineBtns[1].props["data-value"] === "1" && String(engineBtns[1].props.className).includes("sp-choice-on"), "默认选中的是新版（value=1）");
+    ok(engineBtns[0].props["data-value"] === "0" && !String(engineBtns[0].props.className).includes("sp-choice-on"), "稳定版没被选中");
+    const stableState = { ...fakeState, settings: { ...fakeState.settings, scriptEngine: 0 } };
+    const treeStable = T.renderPanel({ t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() }, stableState, "session", () => {}, () => {});
+    const stableBtns = nodesOfClass(treeStable, "sp-choice-btn").filter((node) => node.props["data-choice"] === "scriptEngine");
+    ok(String(stableBtns[0].props.className).includes("sp-choice-on"), "scriptEngine=0 时高亮稳定版");
+    ok(texts(treeStable).includes("spine.engineStableHint"), "稳定版有自己的说明");
   }
 
   // 不进 11 项预设：点推荐档不能改到 officialScript
@@ -1400,6 +1430,28 @@ console.log("9i. 本版更新卡 + 收尾停止线下限");
 
   ok(T.NewsCard({ t: (k) => k, news: { entries: [] }, version: "1.3.24", open: true, onClose: () => {} }) === null, "没有更新记录就不占地方");
 
+  // 入口只给最新版（用户 2026-11-26 明确要求）：默认只画最新一条，其余藏在「历史版本」里
+  hooks.length = 0;
+  const latestOnly = T.NewsCard({ t: (k) => k, news, version: "1.3.24", open: true, onClose: () => {} });
+  const latestTexts = textsOf(latestOnly);
+  ok(latestTexts.includes("v1.3.24"), "默认展示最新版");
+  ok(!latestTexts.includes("v1.3.23"), "默认不展示旧版（1.3.23 藏在历史里）");
+  const historyBtn = buttonOf(latestOnly, "data-news-history");
+  ok(Boolean(historyBtn), "有「历史版本」按钮");
+  ok(String(textsOf(historyBtn).join("")).includes("2"), "按钮上标着总版本数");
+  let toggled = 0;
+  hooks.length = 0;
+  const expanded = T.NewsCard({
+    t: (k) => k, news, version: "1.3.24", open: true, historyOpen: true,
+    onToggleHistory: () => { toggled += 1; }, onClose: () => {},
+  });
+  const expandedTexts = textsOf(expanded);
+  ok(expandedTexts.includes("v1.3.24") && expandedTexts.includes("v1.3.23"), "展开后旧版本都在");
+  const hideBtn = buttonOf(expanded, "data-news-history");
+  ok(hideBtn && hideBtn.props["data-news-history"] === "hide", "展开后按钮变成「收起」");
+  hideBtn.props.onClick();
+  ok(toggled === 1, "点历史版本按钮会回调面板切换");
+
   // 宿主读不到时用内嵌要点兜底：卡片照画，并标明来源
   ok(Array.isArray(T.CLIENT_NEWS) && T.CLIENT_NEWS.length >= 2, "包内自带最近几版要点（" + T.CLIENT_NEWS.length + " 条）");
   hooks.length = 0;
@@ -1427,7 +1479,8 @@ ok(T.CLIENT_NEWS.every((e) => !e.bullets.some((b) => b.length > 90)), "每条要
     { version: "1.3.9", date: "2026-11-26", title: "老版本", bullets: ["x"] },
   ], T.CLIENT_NEWS);
   const mergedOrder = merged.map((e) => e.version);
-  ok(mergedOrder[0] === "1.3.32", "合并不看拼接顺序，最高版本排第一：" + mergedOrder.slice(0, 3).join(" > "));
+  // 不写死版本号：每次发版 CLIENT_NEWS 的第一条就是最新，断言跟着它走。
+  ok(mergedOrder[0] === T.CLIENT_NEWS[0].version, "合并不看拼接顺序，最高版本排第一：" + mergedOrder.slice(0, 3).join(" > "));
   ok(mergedOrder.indexOf("1.3.31") < mergedOrder.indexOf("1.3.28"), "1.3.31 在 1.3.28 之前");
   ok(mergedOrder.indexOf("1.3.9") > mergedOrder.indexOf("1.3.24"), "1.3.9 按数字比较排在 1.3.24 之后（不是按字符串）");
   ok(new Set(mergedOrder).size === mergedOrder.length, "没有重复版本");

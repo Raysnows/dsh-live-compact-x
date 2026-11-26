@@ -36,9 +36,12 @@ spanBandRatio: 0, // >0：单刀上限 = 上下文 × 比例，再夹进 chunkMi
 
 strictHostContext: 0, // 1 = 退回旧行为，把宿主注入的上下文快照也当成用户墙（默认 0：它们不是用户的话）
 
-officialScript: 0, // 大刀怎么归纳：0 = 官方模型摘要（默认，会走 LLM），1 = 本地脚本卡片（零模型调用）
+officialScript: 0, // 大刀怎么归纳：0 = 当前模型摘要（默认，会走 LLM），1 = 本地脚本卡片（零模型调用）
 
   cooldownMs: 0, // 0 = 只用 seq 一次性跳过
+  // 本地脚本的版本：0 = 稳定版（按原文顺序先到先得），1 = 新版（价值密度 + 去重）。
+  // 默认用新版：同样的预算能保住更多硬事实（实测缺 7 → 3）。想回旧行为随时切 0。
+  scriptEngine: 1,
 });
 
 /** 旧的环境变量仍然有效，但只作为 config 缺席时的兜底。 */
@@ -50,6 +53,7 @@ export const ENV = Object.freeze({
   chunkMin: "SPINE_CHUNK_MIN",
   chunkMax: "SPINE_CHUNK_MAX",
   cooldownMs: "SPINE_COOLDOWN_MS",
+  scriptEngine: "SPINE_SCRIPT_ENGINE",
 
 bigGate: "SPINE_BIG_GATE",
 
@@ -257,8 +261,11 @@ export function configSchema(z, stockSchema) {
     strictHostContext: count(0)
       .description("0 = 宿主注入的上下文快照（时间/环境/技能目录）不算用户墙，小刀才切得动；1 = 退回旧行为。")
       .volatile(),
+    scriptEngine: count(0).max(1)
+      .description("本地脚本的版本：1 = 新版（默认，按价值密度选行 + 去重，同样预算保住更多硬事实）；0 = 稳定版（回到 1.3.32 的按原文顺序先到先得）。小刀、中刀、大刀的本地卡片都走这个开关。")
+      .volatile(),
     officialScript: count(0).max(1)
-      .description("大刀（超过启用线时的整段归纳）用谁：0 = 官方模型摘要（默认，会调模型、有 LLM 成本）；1 = 本地脚本卡片（零模型调用，机械摘录，不调模型）。坏卡或空文本直接报错，不回退官方。")
+      .description("大刀（超过启用线时的整段归纳）用谁：0 = 当前模型的摘要（默认，会调模型、有 LLM 成本；指的是你这条会话正在用的模型，不是 DeepSeek 官方账号的模型）；1 = 本地脚本卡片（零模型调用，机械摘录，不调模型）。坏卡或空文本直接报错，不回退。")
       .volatile(),
   });
 }

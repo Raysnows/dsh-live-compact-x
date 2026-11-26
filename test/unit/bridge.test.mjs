@@ -13,6 +13,9 @@ process.env.SPINE_SETTINGS_FILE = file;
 process.env.SPINE_PRESETS_FILE = join(dir, "spine-presets.json");
 const sessionsDir = join(dir, "sessions");
 process.env.SPINE_SESSIONS_DIR = sessionsDir;
+// 诊断要读决策日志：指到临时目录，别读到本机真数据（否则断言随机器变）。
+process.env.SPINE_SHADOW_DIR = join(dir, "shadow");
+mkdirSync(join(dir, "shadow"), { recursive: true });
 mkdirSync(join(sessionsDir, "--D-ws--", "sess-a"), { recursive: true });
 mkdirSync(join(sessionsDir, "--D-ws--", "session-sess-b"), { recursive: true });
 
@@ -212,10 +215,20 @@ console.log("5. 自定义档：本会话 / 本工作区 / 全部会话");
 
 console.log("8. 脱敏诊断（op=diag）");
 {
+  // 造一份有代表性的决策日志：切成两刀（含一中刀）、两次被拒、一次大刀、一次脚本摘要。
+  const D = (o) => JSON.stringify({ v: 1, sid: "sess-a", ...o });
+  writeFileSync(join(dir, "shadow", "spine-decisions.jsonl"), [
+    D({ ts: "2026-11-26T10:00:00.000Z", phase: "cut", result: "committed", before: 300000, after: 290000, saved: 10000, tokens: 12000, merge: false, engineUsed: "local", pass: 0 }),
+    D({ ts: "2026-11-26T10:05:00.000Z", phase: "cut", result: "committed", before: 250000, after: 230000, saved: 20000, tokens: 30000, merge: true, engineUsed: "local", pass: 0 }),
+    D({ ts: "2026-11-26T10:10:00.000Z", phase: "cut-skip", reason: "no-legal-span", totalTokens: 400000, policy: "payback", payback: 9.5, netGain: 1000, rewriteTokens: 30000, missTokens: 380000 }),
+    D({ ts: "2026-11-26T10:11:00.000Z", phase: "merge-skip", reason: "breakeven", totalTokens: 400000, spanTokens: 9000, cardTokens: 7000, missTokens: 300000, breakEven: 2 }),
+    D({ ts: "2026-11-26T10:20:00.000Z", phase: "official-handover", result: "ran", before: 450000, after: 120000 }),
+    D({ ts: "2026-11-26T10:21:00.000Z", phase: "official-summary", result: "usable", summarizer: "script", spanChars: 900000, cardChars: 30000, hardCount: 40, missing: 0, degraded: false }),
+  ].join("\n") + "\n");
   const diag = (await call({ op: "diag", sid: "sess-a" })).json;
   ok(diag.ok === true && diag.value && typeof diag.value.text === "string", "返回诊断文本 " + JSON.stringify(diag).slice(0, 200));
   ok(diag.value.text.includes("插件诊断"), "有标题");
-  ok(diag.value.text.length <= 8000, "长度受限：" + diag.value.text.length);
+  ok(diag.value.text.length <= 12000, "长度受限：" + diag.value.text.length);
   ok(diag.value.url.startsWith("https://github.com/Raysnows/dsh-live-compact-x/issues/new?"), "给出新建 issue 链接");
   ok(diag.value.url.includes("body="), "链接带预填 body");
   ok(!/C:\\Users\\|\\AppData\\|\/home\//.test(diag.value.text), "不含本机家目录");
@@ -223,6 +236,19 @@ console.log("8. 脱敏诊断（op=diag）");
   ok(!/(sk-|Bearer )/.test(diag.value.text), "不含 token");
   ok(diag.value.text.includes("生效值"), "带生效设置");
   ok(diag.value.text.includes("最近决策"), "带决策摘要");
+
+  // 新内容：切割参数全量 + 与默认的差异 + 刀法统计 + 分布 + 拒因 + 脚本指标
+  ok(diag.value.text.includes("切割参数"), "带切割参数段");
+  ok(diag.value.text.includes("officialAbove=") && diag.value.text.includes("bigGate="), "参数里有大刀启用线与停切线");
+  ok(diag.value.text.includes("spanBandRatio=") && diag.value.text.includes("officialCooldownMs="), "参数里有刀长比例与大刀冷却");
+  ok(diag.value.text.includes("与默认不同") && diag.value.text.includes("minNetGain=4321"), "标出与默认不同的项");
+  ok(diag.value.text.includes("刀法统计"), "带刀法统计段");
+  ok(diag.value.text.includes("小切：2 刀（其中中刀 1）"), "数出两刀、含一中刀");
+  ok(diag.value.text.includes("大刀：1 次"), "数出一次大刀");
+  ok(diag.value.text.includes("no-legal-span × 1") && diag.value.text.includes("breakeven × 1"), "拒因计数正确");
+  ok(diag.value.text.includes("段 p50") && diag.value.text.includes("重算面"), "带段/卡分布与重算面");
+  ok(diag.value.text.includes("本地脚本") && diag.value.text.includes("成功 1"), "带本地脚本指标");
+  ok(diag.value.text.includes("card=30000") && diag.value.text.includes("hard=40"), "脚本卡片指标在诊断里");
 }
 
 console.log("9. 本版更新（op=whatsnew）");

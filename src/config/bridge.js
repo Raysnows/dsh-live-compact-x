@@ -60,49 +60,157 @@ function directoryFootprint(dir) {
   return out;
 }
 
+/** 百分位：样本少也给个可信的 p50 / p90，别用平均值糊过去。 */
+function percentile(values, ratio) {
+  const list = values.filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+  if (!list.length) return null;
+  const idx = Math.min(list.length - 1, Math.max(0, Math.round((list.length - 1) * ratio)));
+  return list[idx];
+}
+
+function readDecisionRecords(dir, limit = 400) {
+  const out = [];
+  for (const line of readTailLines(join(dir, DECISIONS_NAME), limit, 512 * 1024)) {
+    try { out.push(JSON.parse(line)); } catch { /* 坏行跳过，不能让诊断自己挂掉 */ }
+  }
+  return out;
+}
+
+/** 参数展开成 key=value 一行，只留数值与布尔——够复现，不带任何路径。 */
+function flattenParams(source) {
+  return Object.entries(source || {})
+    .filter(([, value]) => typeof value === "number" || typeof value === "boolean")
+    .map(([key, value]) => key + "=" + value);
+}
+
+const fmtK = (n) => (Number.isFinite(n) ? (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n)) : "?");
+
 /**
- * 面板「提交问题日志」用的脱敏诊断：版本、设置、开关、最近决策、目录体量。
- * 只读、不写盘；结果同时给「复制」和「去 issue」两个按钮。
+ * 面板「提交问题日志」用的脱敏诊断。
+ *
+ * 内容按「调参 / 复现需要什么」组织：全部切割参数（生效值 + 与默认的差异）、
+ * 刀法统计、段与卡片的分布、被拒原因、本地脚本生成的卡片指标，最后才是最近的
+ * 决策流水。旧版只给最近 30 条决策，段长 / 卡长 / 重算面这些调参最需要的数
+ * 全丢了，收到日志也没法复现一刀为什么切不动。
+ *
+ * 全段仍走 sanitizeReport：家目录、用户名、会话 id、token、绝对路径都抹掉；
+ * 只输出数字和枚举，不输出任何聊天正文。
  */
 function buildDiagnostic(sid, getConfig) {
-  const settings = describeSettings(getConfig(), presetLayerFor(sid));
-  const numbers = Object.fromEntries(Object.entries(settings.effective || {})
-    .filter(([, value]) => typeof value === "number")
-    .map(([key, value]) => [key, value]));
+  const described = describeSettings(getConfig(), presetLayerFor(sid));
+  const effective = described.effective || {};
+  const defaults = described.defaults || {};
+  const params = flattenParams(effective);
+  const drift = Object.keys(defaults)
+    .filter((key) => typeof defaults[key] === "number"
+      && typeof effective[key] === "number"
+      && effective[key] !== defaults[key])
+    .map((key) => key + "=" + effective[key] + "（默认 " + defaults[key] + "）");
+  const fixed = flattenParams(described.fixed);
   const dir = shadowDirectory();
   const shadow = directoryFootprint(dir);
-  const decisions = readTailLines(join(dir, DECISIONS_NAME), 30)
-    .map((line) => {
-      try {
-        const record = JSON.parse(line);
-        return [
-          String(record.ts || ""),
-          record.sid ? "<id>" : "",
-          record.phase || "",
-          record.result || "",
-          record.reason || "",
-          Number.isFinite(record.totalTokens) ? "total=" + record.totalTokens : "",
-          Number.isFinite(record.conversationTokens) ? "conv=" + record.conversationTokens : "",
-          Number.isFinite(record.systemOverhead) ? "sys=" + record.systemOverhead : "",
-          record.summarizer ? "summarizer=" + record.summarizer : "",
-        ].filter(Boolean).join(" ");
-      } catch {
-        return "(unparsable decision line)";
-      }
-    });
+  const records = readDecisionRecords(dir);
+
+  const cuts = records.filter((record) => record.phase === "cut" && record.result === "committed");
+  const mergeCuts = cuts.filter((record) => record.merge === true);
+  const spanStats = cuts.map((record) => Number(record.tokens)).filter(Number.isFinite);
+  const cardStats = cuts.map((record) => Number(record.tokens) - Number(record.saved)).filter(Number.isFinite);
+  const missStats = records
+    .filter((record) => record.phase === "cut-skip" || record.phase === "merge-skip")
+    .map((record) => Number(record.missTokens))
+    .filter(Number.isFinite);
+  const ratios = cuts
+    .map((record) => (Number(record.tokens) > 0 ? (Number(record.tokens) - Number(record.saved)) / Number(record.tokens) : NaN))
+    .filter(Number.isFinite);
+  const savedSum = cuts.reduce((total, record) => total + (Number(record.saved) || 0), 0);
+
+  const handovers = records.filter((record) => record.phase === "official-handover" && record.result === "ran");
+  const bigBefore = handovers.map((record) => Number(record.before)).filter(Number.isFinite);
+  const bigSaved = handovers.reduce((total, record) => total + ((Number(record.before) || 0) - (Number(record.after) || 0)), 0);
+
+  // 只统计「没切 / 没压成」的原因；started/usable 这种过程记录不算拒因。
+  // 原因文本可能夹带上游报错原文，截断到 40 字符，别把诊断撑成一屏。
+  const shortReason = (value) => String(value || "?").replace(/\s+/g, " ").slice(0, 40);
+  const reasons = new Map();
+  for (const record of records) {
+    let key = "";
+    if (record.phase === "cut-skip" || record.phase === "merge-skip") {
+      key = record.phase + ":" + shortReason(record.reason);
+    } else if (record.phase === "official-handover" && (record.result === "failed" || record.result === "deferred")) {
+      key = "official-handover:" + record.result + ":" + shortReason(record.reason);
+    } else if (record.phase === "official-summary" && ["failed", "empty", "not-smaller", "card-incomplete"].includes(record.result)) {
+      key = "official-summary:" + shortReason(record.result);
+    }
+    if (key) reasons.set(key, (reasons.get(key) || 0) + 1);
+  }
+
+  const scriptSummaries = records.filter((record) => record.phase === "official-summary" && record.summarizer === "script");
+  const scriptOk = scriptSummaries.filter((record) => record.result === "usable");
+  const scriptMetrics = scriptOk.map((record) => [
+    Number.isFinite(record.cardChars) ? "card=" + record.cardChars : "",
+    Number.isFinite(record.hardCount) ? "hard=" + record.hardCount : "",
+    Number.isFinite(record.missing) ? "missing=" + record.missing : "",
+  ].filter(Boolean).join(" ")).filter(Boolean);
+
+  const compact = (record) => [
+    String(record.ts || "").replace("T", " ").slice(0, 19),
+    record.sid ? "<id>" : "",
+    record.phase || "",
+    record.result || "",
+    record.reason || "",
+    Number.isFinite(record.totalTokens) ? "total=" + record.totalTokens : "",
+    Number.isFinite(record.conversationTokens) ? "conv=" + record.conversationTokens : "",
+    Number.isFinite(record.systemOverhead) ? "sys=" + record.systemOverhead : "",
+    Number.isFinite(record.before) ? "before=" + record.before : "",
+    Number.isFinite(record.after) ? "after=" + record.after : "",
+    Number.isFinite(record.saved) ? "saved=" + record.saved : "",
+    Number.isFinite(record.spanTokens) ? "span=" + record.spanTokens : "",
+    Number.isFinite(record.cardTokens) ? "card=" + record.cardTokens : "",
+    Number.isFinite(record.netGain) ? "net=" + record.netGain : "",
+    Number.isFinite(record.payback) ? "payback=" + record.payback : "",
+    Number.isFinite(record.rewriteTokens) ? "rewrite=" + record.rewriteTokens : "",
+    Number.isFinite(record.missTokens) ? "miss=" + record.missTokens : "",
+    record.policy ? "policy=" + record.policy : "",
+    record.summarizer ? "summarizer=" + record.summarizer : "",
+  ].filter(Boolean).join(" ");
+
   const lines = [
     "### 插件诊断（自动脱敏）",
-    "- 插件版本：" + (settings.file ? "" : "") + versionText(),
+    "- 插件版本：" + versionText(),
     "- 宿主平台：" + process.platform + " / node " + process.version,
-    "- 设置文件：" + (settings.file ? "~/" + String(settings.file).split(/[\\/]/).slice(-2).join("/") : "(none)"),
-    "- 生效值：" + JSON.stringify(numbers),
-    "- 总开关：" + JSON.stringify(switchSnapshot(sid)),
+    "- 设置文件：" + (described.file ? "~/" + String(described.file).split(/[\\/]/).slice(-2).join("/") : "(none)"),
     "- 生效档：" + JSON.stringify(presetsSnapshot(sid).layer || null),
+    "- 总开关：" + JSON.stringify((() => {
+      const snap = switchSnapshot(sid) || {};
+      return { global: snap.global, session: snap.session, sessionDisabled: snap.sessionDisabled, disabledCount: snap.disabledCount };
+    })()),
+    "",
+    "#### 切割参数（生效值，贴 issue 时这行就是复现配置）",
+    "- 全部：" + params.join(", "),
+    ...(drift.length ? ["- 与默认不同：" + drift.join(", ")] : []),
+    ...(fixed.length ? ["- 宿主配置固定值：" + fixed.join(", ")] : []),
+    "",
+    "#### 刀法统计（来自决策日志 " + records.length + " 条）",
+    "- 小切：" + cuts.length + " 刀（其中中刀 " + mergeCuts.length + "），共省 " + fmtK(savedSum) + " token，平均 " + fmtK(cuts.length ? Math.round(savedSum / cuts.length) : 0),
+    "- 段/卡（小切样本 " + spanStats.length + "）：段 p50 " + fmtK(percentile(spanStats, 0.5)) + " / p90 " + fmtK(percentile(spanStats, 0.9))
+      + "；卡 p50 " + fmtK(percentile(cardStats, 0.5)) + " / p90 " + fmtK(percentile(cardStats, 0.9))
+      + "；卡占原文 p50 " + (ratios.length ? Math.round(percentile(ratios, 0.5) * 100) + "%" : "?"),
+    "- 重算面 missTokens（被拒样本 " + missStats.length + "）：p50 " + fmtK(percentile(missStats, 0.5)) + " / p90 " + fmtK(percentile(missStats, 0.9)),
+    "- 大刀：" + handovers.length + " 次，输入共 " + fmtK(bigBefore.reduce((a, b) => a + b, 0)) + " token（p50 " + fmtK(percentile(bigBefore, 0.5)) + "），共省 " + fmtK(bigSaved),
+    "",
+    "#### 被拒 / 空转原因（调门槛先看这里）",
+    ...(reasons.size ? ["- " + [...reasons.entries()].map(([key, count]) => key + " × " + count).join("；")] : ["- (none)"]),
+    "",
+    "#### 本地脚本（officialScript=1 时的卡片）",
+    "- 脚本摘要：" + scriptSummaries.length + " 次，成功 " + scriptOk.length,
+    ...(scriptMetrics.length ? ["- 最近成功卡片：" + scriptMetrics.slice(-5).join(" | ")] : []),
+    "",
+    "#### 最近决策（最多 14 条）",
+    ...records.slice(-14).map((record) => "  - " + compact(record)),
+    "",
     "- shadow 目录：" + shadow.files + " 个文件 / " + (shadow.bytes / 1048576).toFixed(1) + "MB",
-    "- 最近决策（最多 30 条）：",
-    ...decisions.map((line) => "  - " + line),
   ];
-  const text = sanitizeReport(lines.join("\n")).slice(0, 8000);
+  const text = sanitizeReport(lines.join("\n")).slice(0, 12000);
   const body = sanitizeReport("请描述现象与复现步骤（已自动附上脱敏诊断，可直接编辑删改）：\n\n" + text).slice(0, 6000);
   const url = ISSUE_URL + "?title=" + encodeURIComponent("[bug] ") + "&body=" + encodeURIComponent(body);
   return { text, url };
@@ -110,7 +218,7 @@ function buildDiagnostic(sid, getConfig) {
 
 function versionText() {
   try {
-    return String(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version || "");
+    return String(JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version || "");
   } catch {
     return "";
   }

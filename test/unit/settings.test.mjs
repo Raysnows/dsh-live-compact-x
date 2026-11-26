@@ -8,6 +8,10 @@ ok(d.bigGate === 650000, "bigGate 默认 650k", String(d.bigGate));
 ok(d.minNetGain === 3000, "净收益门槛默认 3k", String(d.minNetGain));
 ok(d.burstCuts === 3, "连切默认 3", String(d.burstCuts));
 ok(d.officialAbove === 0, "大刀主动交接默认关", String(d.officialAbove));
+// 本地脚本版本：默认新（1），旧行为靠 0 切回；环境变量能覆盖。
+ok(d.scriptEngine === 1, "本地脚本默认用新版", String(d.scriptEngine));
+const stable = readSettings({}, { SPINE_SCRIPT_ENGINE: "0" });
+ok(stable.scriptEngine === 0, "环境变量可切回稳定版", String(stable.scriptEngine));
 const e = readSettings({}, { SPINE_BIG_GATE: "500000", SPINE_DEEP_CUT_ABOVE: "200000" });
 ok(e.bigGate === 500000 && e.deepCutAbove === 200000, "环境变量可覆盖");
 ok(d.mergeMaxSpan === 4 && d.mergeBreakEven === 2, "中刀窗口默认 4 × chunkMax、盈亏上限 2", String(d.mergeMaxSpan));
