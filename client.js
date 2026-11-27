@@ -562,7 +562,7 @@ window.__ModuleLoader__.load({
       "ctx.messages": "消息",
       "ctx.other": "其他",
       "ctx.otherHint": "已用总量减去已归类部分；包含供应商口径与估算之间的差异。",
-      "ctx.compact": "压缩上下文",
+      "ctx.compact": "手动 compact",
       "ctx.compacting": "正在压缩…",
       "ctx.compacted": "已提交 /compact",
       "ctx.compactFailed": "压缩请求失败：{message}",
@@ -798,7 +798,7 @@ window.__ModuleLoader__.load({
       "ctx.messages": "Messages",
       "ctx.other": "Other",
       "ctx.otherHint": "Used total minus the attributed rows; includes the gap between provider accounting and the estimate.",
-      "ctx.compact": "Compact context",
+      "ctx.compact": "Manual compact",
       "ctx.compacting": "Compacting…",
       "ctx.compacted": "Submitted /compact",
       "ctx.compactFailed": "Compaction request failed: {message}",
@@ -1040,7 +1040,9 @@ window.__ModuleLoader__.load({
       ".ctx-kname{display:flex;align-items:center;min-width:0;color:var(--dsw-alias-label-secondary)}",
       ".ctx-knum{text-align:right;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
       ".ctx-kpct{text-align:right;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
-      ".ctx-btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:34px;padding:0 12px;border:none;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}",
+      // 按钮不放满宽：它是个收尾动作，跟上面几行数据不该抢同一份视觉重量。
+      // 60% 居中 + 上方留白，贴在表格最后一行下面刚好。
+      ".ctx-btn{display:flex;align-items:center;justify-content:center;gap:6px;width:60%;margin:14px auto 0;height:32px;padding:0 12px;border:none;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}",
       ".ctx-btn svg{flex:none;display:block;transform:translateY(1px)}",
       ".ctx-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}",
       ".ctx-btn:disabled{opacity:.6;cursor:default}",

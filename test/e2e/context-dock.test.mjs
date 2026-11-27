@@ -184,6 +184,7 @@ console.log("5. ContextDock 渲染");
   ok(["ctx.colName", "ctx.colCuts", "ctx.colTokens", "ctx.colShare"].every((k) => visible.includes(k)), "四列表头齐全");
   const compactBtn = findNode(tree, (n) => n.type === "button" && String(n.props?.className || "").includes("ctx-btn"));
   ok(compactBtn.length === 1, "有且只有一个压缩按钮");
+  ok(/width:60%/.test(String(T.CONTEXT_CSS)) && /margin:14px auto 0/.test(String(T.CONTEXT_CSS)), "按钮 60% 居中、上方留 14px（不跟数据行抢视觉重量）");
   // 图标是两段 path：外框 + 内部横线。只抄一段会渲染成一个实心方块。
   const iconPaths = (compactBtn[0].children || []).flatMap((child) => (child.children || []))
     .filter((n) => n.type === "path");
