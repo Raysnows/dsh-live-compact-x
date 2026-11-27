@@ -192,31 +192,74 @@ console.log("15. 挂起的 summary 有上限，不会无限堆");
   ok(s.pending.x29 !== undefined && s.pending.x0 === undefined, "留的是最新的");
 }
 
-console.log("16. 官方压缩归谁：接管之后算大刀，之前算官方");
+console.log("16. 官方卡归谁：只有被 official-handover 认领的才算大刀");
 {
   const first = Date.parse("2026-11-21T09:00:00.000Z");
-  const before = { kind: "official", time: first - 3600_000, tokens: 5000 };
-  const after = { kind: "official", time: first + 60_000, tokens: 400000 };
-  const ours = { kind: "small", time: first + 120_000, tokens: 8000 };
-  const list = attributeCuts([before, after, ours], first);
-  ok(list[0].kind === "official", "接管前的官方压缩仍是官方");
-  ok(list[1].kind === "big", "接管后的官方压缩记成大刀（时间是卡片时间）");
-  ok(list[2].kind === "small", "小刀不受影响");
-  ok(isOursOfficial(first, first) && !isOursOfficial(first - 1, first), "边界：正好等于首次活动算我们的，早一毫秒就不算");
-  ok(!isOursOfficial(first, 0), "没有首次活动时间时不瞎认");
-  ok(attributeCuts([before, after], 0)[1].kind === "official", "日志缺失时保守算官方");
-  // 手动 /compact：卡片带 sourceCommandId，即使落在接管之后也仍是官方，不是大刀
-  const manual = { kind: "official", time: first + 90_000, tokens: 508657, sourceCommandId: "cmd-594e58c7-1" };
-  ok(attributeCuts([manual], first)[0].kind === "official", "手动 /compact 带 sourceCommandId：仍算官方");
-  ok(!isOursOfficial(first + 90_000, first, "cmd-1"), "命令发起的官方压缩不算大刀");
-  ok(isOursOfficial(first + 90_000, first, ""), "没有命令 id 的官方压缩仍按时间判");
-  const counted = countCuts({ kinds: { official: 2 }, savedBy: { official: 405000 } }, list);
+  const cardTime = first + 60_000;
+  const handover = cardTime + 30_000;   // 记录写在 compactIfNeeded 返回之后
+  const ctx = (extra) => ({ officialAbove: 450000, handovers: [handover], ...extra });
+
+  const orphan = { kind: "official", time: cardTime, tokens: 400000 };
+  // 宿主自己的压力/溢出触发：没有任何标记，也没有 handover 记录 → 官方
+  ok(attributeCuts([orphan], first, { officialAbove: 450000, handovers: [] })[0].kind === "official",
+    "没有 handover 记录能认领：算官方");
+  // 对得上 handover 时间点 → 大刀
+  ok(attributeCuts([orphan], first, ctx())[0].kind === "big", "对得上 handover 时间点：算大刀");
+  // 大刀开关关着：插件这条路根本不会跑，出现官方卡一定是宿主的
+  ok(attributeCuts([orphan], first, { officialAbove: 0, handovers: [handover] })[0].kind === "official",
+    "officialAbove=0：即使有 handover 记录也算官方");
+  // 命令触发优先于一切
+  const manual = { kind: "official", time: cardTime, tokens: 508657, sourceCommandId: "cmd-594e58c7-1" };
+  ok(attributeCuts([manual], first, ctx())[0].kind === "official", "手动 /compact 带 sourceCommandId：算官方");
+  // 时差超过窗口：认不了
+  ok(attributeCuts([{ kind: "official", time: cardTime - 400_000, tokens: 1000 }], first, ctx())[0].kind === "official",
+    "卡片比 handover 早超过 300 秒：不算大刀");
+  // 卡片晚于 handover：不是这一刀
+  ok(attributeCuts([{ kind: "official", time: handover + 1000, tokens: 1000 }], first, ctx())[0].kind === "official",
+    "卡片晚于 handover：不算大刀");
+  // 一条记录只能认领一张卡
+  const two = attributeCuts([
+    { kind: "official", time: cardTime, tokens: 1000 },
+    { kind: "official", time: cardTime + 5000, tokens: 2000 },
+  ], first, ctx());
+  ok(two.filter((cut) => cut.kind === "big").length === 1, "一条 handover 记录只认领一张卡");
+
+  ok(attributeCuts([{ kind: "small", time: cardTime, tokens: 8000 }], first, { officialAbove: 0, handovers: [] })[0].kind === "small",
+    "小刀不受归因改动影响");
+
+  ok(isOursOfficial(cardTime, first, "", ctx()), "isOursOfficial：卡片早于 handover 且在窗口内");
+  ok(!isOursOfficial(handover + 1000, first, "", ctx()), "isOursOfficial：卡片晚于 handover 不算");
+  ok(!isOursOfficial(0, first, "", ctx()), "isOursOfficial：没有卡片时间不瞎认");
+
+  // 计数：一张大刀 + 一张接管前的官方
+  const mixed = attributeCuts(
+    [orphan, { kind: "official", time: first - 3600_000, tokens: 5000 }],
+    first,
+    ctx(),
+  );
+  ok(mixed[0].kind === "big" && mixed[1].kind === "official", "同一会话里大刀与官方可以并存");
+  const counted = countCuts({ kinds: { official: 2 }, savedBy: { official: 405000 } }, mixed);
   ok(counted.kinds.big === 1 && counted.kinds.official === 1, "计数按归属分开");
   ok(counted.savedBy.big === 400000 && counted.savedBy.official === 5000, "切掉量也跟着分");
   // 40 刀上限之外的历史：原始计数比看得见的多，多出来的保守记官方
-  const capped = countCuts({ kinds: { official: 5 }, savedBy: { official: 900000 } }, attributeCuts([after, ours], first));
+  const capped = countCuts({ kinds: { official: 5 }, savedBy: { official: 900000 } }, mixed);
   ok(capped.kinds.big === 1 && capped.kinds.official === 4, "上限之外的历史记成官方（" + capped.kinds.official + "）");
   ok(capped.savedBy.official === 500000, "切掉量补回：" + capped.savedBy.official);
+}
+
+console.log("16a. 宿主自触发的官方压缩不再被算成大刀（真实会话回归）");
+{
+  // 复刻 session-bd34b3a5：两张官方卡，插件从未 official-handover
+  const first = Date.parse("2026-11-27T03:45:43.563Z");
+  const early = { kind: "official", time: Date.parse("2026-11-27T02:28:04.040Z"), tokens: 370904 };
+  const late = { kind: "official", time: Date.parse("2026-11-27T11:36:20.105Z"), tokens: 184265 };
+  const list = attributeCuts([early, late], first, { officialAbove: 0, handovers: [] });
+  ok(list[0].kind === "official", "早于首次活动的官方卡：官方");
+  ok(list[1].kind === "official", "晚于首次活动、但没有 handover 记录：仍是官方（旧版会误判大刀）");
+  const counted = countCuts({}, list);
+  ok(counted.kinds.big === 0, "大刀计数为 0（实际 " + counted.kinds.big + "）");
+  ok(counted.kinds.official === 2, "两张都记官方");
+  ok(counted.savedBy.official === 370904 + 184265, "切掉量全部归官方");
 }
 
 console.log("16b. 卡片上的 sourceCommandId 进到 cuts，供归因使用");
@@ -239,29 +282,57 @@ console.log("16b. 卡片上的 sourceCommandId 进到 cuts，供归因使用");
   ok(attributeCuts(s.cuts, 1)[0].kind === "official", "该卡片归因为官方而不是大刀");
 }
 
-console.log("17. 视图里带着每条会话的首次活动时间");
+console.log("17. 视图里带着首次活动时间与大刀认领表");
 {
   const first = Date.parse("2026-11-21T09:00:00.000Z");
+  const cardTime = first + 1000;
   const aggregate = {
     generatedAt: 1, since: first, sessions: 1,
     knives: { small: { cuts: 0, tokens: 0, saved: 0 }, merge: { cuts: 0, tokens: 0, saved: 0 }, big: { cuts: 1, tokens: 500000, saved: 400000 } },
     attempts: { cut: 0, cutSkip: 0, mergeSkip: 0, official: 1, failed: 0 },
     firstBySid: { "session-abc": first },
+    officialHandovers: { "session-abc": [cardTime + 30_000] },
   };
-  const d = spineProjectionDefinition({ globalStatsReader: () => aggregate });
+  // officialAbove 必须 > 0：开关关着时插件不可能发起大刀。
+  const d = spineProjectionDefinition({
+    globalStatsReader: () => aggregate,
+    settingsReader: () => ({ officialAbove: 450000 }),
+  });
   let s = d.init({ id: "session-abc" }, 0);
-  s = d.apply(s, { type: "compaction/summary", seq: 1, time: first + 1000, data: { compactionId: "x", shadowedRange: { start: 1, end: 9 }, shadowedTokenCount: 700, provider: "p", model: "m" } });
-  s = d.apply(s, { type: "user/message", seq: 2, time: first + 1000, data: { source: { kind: "compact-checkpoint", compactionId: "x" }, content: [{ type: "text", text: "官方摘要" }] } });
+  s = d.apply(s, { type: "compaction/summary", seq: 1, time: cardTime, data: { compactionId: "x", shadowedRange: { start: 1, end: 9 }, shadowedTokenCount: 700, provider: "p", model: "m" } });
+  s = d.apply(s, { type: "user/message", seq: 2, time: cardTime, data: { source: { kind: "compact-checkpoint", compactionId: "x" }, content: [{ type: "text", text: "官方摘要" }] } });
   const v = d.wire.view(s);
   ok(v.firstActivity === first, "视图带首次活动时间");
-  ok(v.cuts[0].kind === "big" && v.kinds.big === 1 && v.kinds.official === 0, "卡片归到大刀");
-  ok(v.official === 0, "官方计数不再被误算");
+  ok(v.cuts[0].kind === "big" && v.kinds.big === 1 && v.kinds.official === 0, "能被 handover 认领的卡片归到大刀");
+
   // 同一批数据、但会话名对不上时不该乱认
   let s2 = d.init({ id: "other-session" }, 0);
-  s2 = d.apply(s2, { type: "compaction/summary", seq: 1, time: first + 1000, data: { compactionId: "y", shadowedRange: { start: 1, end: 9 }, shadowedTokenCount: 700 } });
-  s2 = d.apply(s2, { type: "user/message", seq: 2, time: first + 1000, data: { source: { kind: "compact-checkpoint", compactionId: "y" }, content: [{ type: "text", text: "x" }] } });
+  s2 = d.apply(s2, { type: "compaction/summary", seq: 1, time: cardTime, data: { compactionId: "y", shadowedRange: { start: 1, end: 9 }, shadowedTokenCount: 700 } });
+  s2 = d.apply(s2, { type: "user/message", seq: 2, time: cardTime, data: { source: { kind: "compact-checkpoint", compactionId: "y" }, content: [{ type: "text", text: "x" }] } });
   const v2 = d.wire.view(s2);
   ok(v2.firstActivity === 0 && v2.cuts[0].kind === "official", "没记录的会话仍算官方");
+
+  // 同一个会话、有卡片但没有 handover 记录：宿主自己压的，算官方
+  const d3 = spineProjectionDefinition({
+    globalStatsReader: () => ({ ...aggregate, officialHandovers: {} }),
+    settingsReader: () => ({ officialAbove: 450000 }),
+  });
+  let s3 = d3.init({ id: "session-abc" }, 0);
+  s3 = d3.apply(s3, { type: "compaction/summary", seq: 1, time: cardTime, data: { compactionId: "z", shadowedRange: { start: 1, end: 9 }, shadowedTokenCount: 700 } });
+  s3 = d3.apply(s3, { type: "user/message", seq: 2, time: cardTime, data: { source: { kind: "compact-checkpoint", compactionId: "z" }, content: [{ type: "text", text: "x" }] } });
+  const v3 = d3.wire.view(s3);
+  ok(v3.cuts[0].kind === "official" && v3.kinds.big === 0, "宿主自触发的官方压缩：算官方");
+
+  // 开关关着时，即使有 handover 记录也不认
+  const d4 = spineProjectionDefinition({
+    globalStatsReader: () => aggregate,
+    settingsReader: () => ({ officialAbove: 0 }),
+  });
+  let s4 = d4.init({ id: "session-abc" }, 0);
+  s4 = d4.apply(s4, { type: "compaction/summary", seq: 1, time: cardTime, data: { compactionId: "w", shadowedRange: { start: 1, end: 9 }, shadowedTokenCount: 700 } });
+  s4 = d4.apply(s4, { type: "user/message", seq: 2, time: cardTime, data: { source: { kind: "compact-checkpoint", compactionId: "w" }, content: [{ type: "text", text: "x" }] } });
+  const v4 = d4.wire.view(s4);
+  ok(v4.cuts[0].kind === "official" && v4.kinds.big === 0, "officialAbove=0：不认大刀");
 }
 
 console.log("18. 升级容错：旧快照不被 schema 挡住");
