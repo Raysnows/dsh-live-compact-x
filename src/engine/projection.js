@@ -10,7 +10,7 @@
  * client through useProjection('spine.cuts').
  */
 
-import { firstActivityOf } from "./stats.js";
+import { firstActivityOf, officialHandoversOf } from "./stats.js";
 
 export const SPINE_PROJECTION_KEY = "spine.cuts";
 export const MAX_CUTS = 40;
@@ -97,24 +97,75 @@ function previewOf(content) {
 }
 
 /**
- * 官方压缩的卡到底是谁发起的：
- * 本插件接管之后，官方摘要只有我们请它才会跑（`official-handover`），所以卡片时间
- * 落在「这条会话第一次被本插件碰到」之后，就算我们的大刀；更早的是插件接管以前的
- * 历史压缩，仍记官方。
+ * 官方卡的三种来源，卡片上长得一模一样（都是 `compact-checkpoint`），只能靠别的信号分：
+ *
+ * 1. 宿主的 `/compact` 命令（`dsh-command-compact`）——卡片带 `source.sourceCommandId`；
+ * 2. **宿主自己的压力/溢出触发**——直接落进 `super.compactIfNeeded`，什么标记都没有；
+ * 3. 本插件请官方压（`official-handover`）——唯一算「大刀」的那种。
+ *
+ * 早先只用「卡片时间 >= 本会话首次活动」判定，把 1 和 2 也算成了大刀。现在的判据：
+ *
+ * - 带 `sourceCommandId` → 官方（1）；
+ * - `officialAbove === 0` → 官方：大刀开关关着，插件不可能发起过（2）；
+ * - 卡片时间能对上一个 `official-handover` 时间点 → 大刀（3）；
+ * - 其余 → 官方（含摘要记录丢失、日志轮换掉的情况，宁可少认）。
+ *
  * @param {number} time 卡片时间（ms）
  * @param {number} firstActivity 这条会话第一次被本插件碰到的毫秒数
+ * @param {string} [sourceCommandId] 卡片的 `source.sourceCommandId`；非空 = 命令触发
+ * @param {{ officialAbove?: number, handovers?: number[], now?: number }} [context]
+ *   `officialAbove` 是当前生效的大刀启用线；`handovers` 是该会话 official-handover
+ *   的毫秒时间点（升序）；`now` 用于测试注入。
  */
-export function isOursOfficial(time, firstActivity) {
+export function isOursOfficial(time, firstActivity, sourceCommandId = "", context = {}) {
   const at = Number(time) || 0;
-  const first = Number(firstActivity) || 0;
-  return first > 0 && at >= first;
+  if (!at) return false;
+  // 1) 命令触发（手动 /compact）不是我们请的官方压缩，永远是官方。
+  if (String(sourceCommandId || "").length > 0) return false;
+  // 2) 大刀开关关着：插件这一路根本不会跑，出现官方卡一定是宿主自己的。
+  const gate = Number(context?.officialAbove);
+  if (Number.isFinite(gate) && gate === 0) return false;
+  // 3) 认领：卡片时间必须早于（或等于）某条 handover 记录，且差距在摘要耗时的
+  //    合理范围内。记录写在 compactIfNeeded 返回之后，所以 handover 总是更晚。
+  const handovers = Array.isArray(context?.handovers) ? context.handovers : [];
+  for (const ts of handovers) {
+    const when = Number(ts) || 0;
+    if (!when) continue;
+    if (at <= when && when - at <= HANDOVER_MATCH_MS) return true;
+  }
+  // 4) 没有 handover 记录能认领它：保守算官方。
+  return false;
 }
 
-/** 把原始 cuts 归成五类：小刀 / 中刀 / 大刀 / 官方 / 旧卡片。 */
-export function attributeCuts(cuts, firstActivity) {
+/** 卡片时间与 handover 记录之间允许的时差：官方摘要最坏要跑满 180 秒超时。 */
+export const HANDOVER_MATCH_MS = 300000;
+
+/**
+ * 把原始 cuts 归成五类：小刀 / 中刀 / 大刀 / 官方 / 旧卡片。
+ *
+ * 一条 handover 记录只能认领一张卡：否则同一刀会被后面的卡片反复借用。
+ * `firstActivity` 保留在签名里（调用方与测试仍在传），但判据已改为「能否被
+ * handover 认领」——它对多种宿主自触发的官方压缩一视同仁。
+ */
+export function attributeCuts(cuts, firstActivity, context = {}) {
+  const handovers = Array.isArray(context?.handovers) ? [...context.handovers].sort((a, b) => a - b) : [];
+  const claimed = new Set();
   return (Array.isArray(cuts) ? cuts : []).map((cut) => {
-    if (cut?.kind === "official" && isOursOfficial(cut.time, firstActivity)) return { ...cut, kind: "big" };
-    return { ...cut };
+    if (cut?.kind !== "official") return { ...cut };
+    const at = Number(cut?.time) || 0;
+    const mine = String(cut?.sourceCommandId || "").length === 0
+      && isOursOfficial(at, firstActivity, cut?.sourceCommandId, { ...context, handovers: handovers.filter((ts) => !claimed.has(ts)) });
+    if (!mine) return { ...cut };
+    // 认领最匹配（时间差最小）的那条记录，避免一条记录被两张卡同时用掉。
+    let best = -1;
+    let bestGap = Infinity;
+    for (const ts of handovers) {
+      if (claimed.has(ts) || at > ts) continue;
+      const gap = ts - at;
+      if (gap <= HANDOVER_MATCH_MS && gap < bestGap) { best = ts; bestGap = gap; }
+    }
+    if (best >= 0) claimed.add(best);
+    return { ...cut, kind: "big" };
   });
 }
 
@@ -160,6 +211,8 @@ export function schemaFor(zod) {
     provider: zod.string(),
     model: zod.string(),
     preview: zod.string(),
+    // 旧快照没有这一项，必须可选，否则升级会把历史会话挡在门外。
+    sourceCommandId: zod.string().optional(),
     rawNames: zod.array(zod.string()),
   });
   // 老快照缺字段也算合法：升级时宁可少显示，也别把历史会话挡在门外。
@@ -182,6 +235,8 @@ export function schemaFor(zod) {
     sessions: zod.number(),
     knives: zod.record(zod.string(), knifeStat),
     firstBySid: zod.record(zod.string(), zod.number()).optional(),
+    // 大刀认领表：每个会话 official-handover 的时间点。旧快照没有这一项。
+    officialHandovers: zod.record(zod.string(), zod.array(zod.number())).optional(),
     attempts: zod.record(zod.string(), zod.number()).optional(),
   });
   const view = zod.object({
@@ -257,7 +312,8 @@ export function spineProjectionDefinition({
     key: SPINE_PROJECTION_KEY,
     stateSchema: schema.state,
     viewSchema: schema.view,
-    stateVersion: 1,
+    // 2：1.4.1 起 cuts 多了 sourceCommandId（手动 /compact 归因）；版本不符时宿主会整段重放。
+    stateVersion: 2,
     init(header) {
       const sid = String(header?.id ?? header?.sessionId ?? "");
       let dir = "";
@@ -308,6 +364,8 @@ export function spineProjectionDefinition({
         provider: String(info.provider ?? ""),
         model: String(info.model ?? ""),
         preview: previewOf(data?.content),
+        // 命令触发的官方压缩（手动 /compact）靠它和「我们请的」区分开。
+        sourceCommandId: String(source?.sourceCommandId ?? ""),
         rawNames: Array.isArray(source?.rawNames) ? source.rawNames.map((name) => String(name)) : [],
       };
       const cuts = [...(state.cuts || []), cut].slice(-MAX_CUTS);
@@ -339,7 +397,13 @@ export function spineProjectionDefinition({
         }
         // 这条会话第一次被本插件碰到的时间：早于它的官方压缩算接管前的历史。
         const firstActivity = firstActivityOf(global, state.sid);
-        const cuts = attributeCuts(state.cuts, firstActivity);
+        // 大刀归属要靠「本插件请官方压过没有」：卡片上没有来源字段，
+        // 只有决策日志里的 official-handover 时间点能认领。
+        const handovers = officialHandoversOf(global, state.sid);
+        const cuts = attributeCuts(state.cuts, firstActivity, {
+          officialAbove: Number(settings.officialAbove) || 0,
+          handovers,
+        });
         const { kinds, savedBy } = countCuts(state, cuts);
         // 「默认档」要有默认值可填：把引擎的 DEFAULTS 一并下发，面板不猜。
         const knobDefaults = {};
@@ -348,7 +412,7 @@ export function spineProjectionDefinition({
           const value = Number(source[key]);
           knobDefaults[key] = Number.isFinite(value) ? value : 0;
         }
-        const stamp = JSON.stringify([settings, knobDefaults, global.generatedAt, global.sessions, global.knives, firstActivity, cuts.length]);
+        const stamp = JSON.stringify([settings, knobDefaults, global.generatedAt, global.sessions, global.knives, firstActivity, handovers, cuts.length]);
         if (cachedView && cachedStamp === stamp) return cachedView;
         cachedStamp = stamp;
         cachedView = {

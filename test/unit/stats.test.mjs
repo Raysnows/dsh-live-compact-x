@@ -1,5 +1,5 @@
 /** 跨会话汇总：只喂文本，不碰真实文件系统。 */
-import { aggregateDecisions, readGlobalStats, resetStatsCache, sidKey, firstActivityOf, DECISIONS_FILE } from "../../src/engine/stats.js";
+import { aggregateDecisions, readGlobalStats, resetStatsCache, sidKey, firstActivityOf, officialHandoversOf, DECISIONS_FILE } from "../../src/engine/stats.js";
 import { makeTemp } from "../fixtures/temp.mjs";
 import { mkdtempSync, writeFileSync, rmSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -123,8 +123,32 @@ console.log("7. 会话名归一与「第一次碰它」的时间");
   ok(firstActivityOf(padded, "session-abcdef123456") > 0, "同一条会话换个前缀写法仍能对上");
 }
 
-console.log("8. 超大日志只读尾巴");
+console.log("7b. 大刀认领表：只收 official-handover ran 的时间点");
 {
+  const t1 = "2026-11-27T01:00:00.000Z";
+  const t2 = "2026-11-27T02:00:00.000Z";
+  const out = aggregateDecisions([
+    rec({ sid: "s1", ts: t1, phase: "official-handover", result: "ran", before: 400000, after: 60000 }),
+    rec({ sid: "s1", ts: t2, phase: "official-handover", result: "ran", before: 300000, after: 50000 }),
+    // 失败与空结果不算：那一刀没落地
+    rec({ sid: "s2", ts: t1, phase: "official-handover", result: "failed" }),
+    rec({ sid: "s2", ts: t2, phase: "official-handover", result: "null" }),
+    // 顺带确认：只有 deferred 也不算
+    rec({ sid: "s3", ts: t1, phase: "official-handover", result: "deferred" }),
+  ].join("\n"));
+  ok(Array.isArray(out.officialHandovers.s1) && out.officialHandovers.s1.length === 2, "两次 ran 各留一个时间点");
+  ok(out.officialHandovers.s1[0] === Date.parse(t1), "时间点按毫秒保存");
+  ok(out.officialHandovers.s2 === undefined, "failed / null 不留认领点");
+  ok(out.officialHandovers.s3 === undefined, "deferred 不留认领点");
+
+  const list = officialHandoversOf(out, "s1");
+  ok(list.length === 2 && list[0] <= list[1], "officialHandoversOf 返回升序时间点");
+  ok(officialHandoversOf(out, "session-s1").length === 2, "会话名少了 session- 前缀也能对上");
+  ok(officialHandoversOf(out, "nobody").length === 0, "没有记录的会话返回空数组");
+  ok(officialHandoversOf({}, "s1").length === 0, "aggregate 缺字段也不抛错");
+}
+
+console.log("8. 超大日志只读尾巴");{
   const dir = makeTemp("spine-stats-big-");
   try {
     resetStatsCache();

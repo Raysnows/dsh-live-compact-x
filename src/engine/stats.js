@@ -26,6 +26,9 @@ function emptyAggregate() {
     attempts: { cut: 0, cutSkip: 0, mergeSkip: 0, official: 0, failed: 0 },
     // 每个会话第一次有记录的毫秒数：早于它就是插件接管之前的历史压缩。
     firstBySid: {},
+    // 每个会话「本插件请官方压」的时间点（official-handover ran）。
+    // 卡片上没有「谁发起的」字段，只有这份记录能把大刀和宿主自己的官方压缩分开。
+    officialHandovers: {},
     recent: [],
   };
 }
@@ -82,6 +85,11 @@ export function aggregateDecisions(text) {
     }
     if (phase === "official-handover") {
       if (result === "ran") {
+        // 只有本插件真的请官方压了，才留一个时间点；卡片靠它认领成大刀。
+        if (ts && sid) {
+          const list = out.officialHandovers[sid] || (out.officialHandovers[sid] = []);
+          list.push(ts);
+        }
         const before = num(record.before);
         const after = num(record.after);
         const saved = Math.max(0, before - after);
@@ -166,6 +174,33 @@ export function firstActivityOf(aggregate, sid) {
     if (key.length >= 8 && other.length >= 8 && (other.includes(key) || key.includes(other))) return Number(ts) || 0;
   }
   return 0;
+}
+
+/**
+ * 这条会话「本插件请官方压」的全部时间点（升序）。
+ *
+ * 卡片本身没有「谁发起的」字段，所以官方卡是不是大刀只能靠这份记录认领：
+ * 卡片时间早于或等于某个时间点、且相差在摘要耗时的合理范围内，就是那一刀。
+ *
+ * @param {ReturnType<typeof readGlobalStats>} aggregate
+ * @param {string} sid
+ * @returns {number[]} 升序的时间点数组；没有就返回空数组
+ */
+export function officialHandoversOf(aggregate, sid) {
+  const table = aggregate?.officialHandovers || {};
+  const key = sidKey(sid);
+  if (!key) return [];
+  let list = table[key];
+  if (!Array.isArray(list)) {
+    // 与 firstActivityOf 同一套归一规则：日志里可能带工作区前缀。
+    for (const [raw, candidate] of Object.entries(table)) {
+      const other = sidKey(raw);
+      if (other === key) { list = candidate; break; }
+      if (key.length >= 8 && other.length >= 8 && (other.includes(key) || key.includes(other))) { list = candidate; break; }
+    }
+  }
+  if (!Array.isArray(list)) return [];
+  return list.map((ts) => Number(ts) || 0).filter((ts) => ts > 0).sort((a, b) => a - b);
 }
 
 /** 测试用：清掉模块级缓存。 */
