@@ -494,8 +494,7 @@ window.__ModuleLoader__.load({
       "spine.cutPointAdjust": "调整旋钮（展开后改值、保存）",
       "spine.openKnobs": "调整旋钮",
       "spine.subBack": "返回",
-      "spine.moreInfo": "更多",
-      "spine.moreInfoHint": "点开是浮层，不占页面",
+      "spine.moreInfo": "更多信息",
       "spine.diagTitle": "提交问题日志",
       "spine.diagCopy": "复制脱敏诊断",
       "spine.diagIssue": "去 GitHub 提 issue",
@@ -701,7 +700,6 @@ window.__ModuleLoader__.load({
       "spine.openKnobs": "Adjust knobs",
       "spine.subBack": "Back",
       "spine.moreInfo": "More",
-      "spine.moreInfoHint": "opens in a floating layer",
       "spine.diagTitle": "Report a problem",
       "spine.diagCopy": "Copy sanitized diagnostics",
       "spine.diagIssue": "Open a GitHub issue",
@@ -2338,20 +2336,16 @@ window.__ModuleLoader__.load({
         h("div", { className: "sp-card-title" }, t("spine.cutPoint"),
           h("span", { className: "sp-card-sub" }, cutPointSub)),
         h("div", { className: "sp-strategy", "data-strategy": "1" }, strategyBits),
-        h("button", {
-          className: "sp-btn sp-entry",
-          "data-sub-open": "knobs",
-          onClick: () => ui && ui.openSub && ui.openSub("knobs"),
-        },
-          h("span", { className: "sp-entry-name" }, t("spine.openKnobs")),
-          h(Chevron)),
         h("details", {
           className: "sp-details sp-knobs",
           "data-sub": "knobs",
           open: Boolean(ui && ui.subView === "knobs"),
           onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
         },
-          h("summary", { className: "sp-knobs-summary" }, t("spine.cutPointAdjust"), h(Chevron)),
+          h("summary", {
+            className: "sp-knobs-summary",
+            "data-sub-open": "knobs",
+          }, t("spine.openKnobs"), h(Chevron)),
           h("button", {
             className: "sp-btn sp-sub-close",
             "data-sub-close": "1",
@@ -2434,15 +2428,13 @@ window.__ModuleLoader__.load({
       // 左列的空白别浪费：把「调试信息」「文档与出处」做成入口放这儿，
       // 点开都是浮层二级界面，不会把主页面的卡片挤长。
       const entriesCard = h("div", { className: "sp-card sp-entries-card" },
-        h("div", { className: "sp-card-title" }, t("spine.moreInfo"),
-          h("span", { className: "sp-card-sub" }, t("spine.moreInfoHint"))),
+        h("div", { className: "sp-card-title" }, t("spine.moreInfo")),
         h("button", {
           className: "sp-btn sp-entry",
           "data-sub-open": "debug",
           onClick: () => ui && ui.openSub && ui.openSub("debug"),
         },
           h("span", { className: "sp-entry-name" }, t("spine.debug")),
-          h("span", { className: "sp-entry-hint" }, t("spine.debugHint")),
           h(Chevron)),
         h("button", {
           className: "sp-btn sp-entry",
@@ -2450,7 +2442,6 @@ window.__ModuleLoader__.load({
           onClick: () => ui && ui.openSub && ui.openSub("docs"),
         },
           h("span", { className: "sp-entry-name" }, t("spine.docs")),
-          h("span", { className: "sp-entry-hint" }, t("spine.docsHint")),
           h(Chevron)));
       const docsCard = h("details", {
         className: "sp-details sp-card",
@@ -2458,9 +2449,7 @@ window.__ModuleLoader__.load({
         open: Boolean(ui && ui.subView === "docs"),
         onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
       },
-        h("summary", { className: "sp-card-title" }, t("spine.docs"),
-          h("span", { className: "sp-card-sub" }, t("spine.docsHint")),
-          h(Chevron)),
+        h("summary", { className: "sp-card-title" }, t("spine.docs"), h(Chevron)),
         h("div", { className: "sp-detail" },
           h("button", {
             className: "sp-btn sp-sub-close",
@@ -2489,9 +2478,7 @@ window.__ModuleLoader__.load({
         open: Boolean(ui && ui.subView === "debug"),
         onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
       },
-        h("summary", { className: "sp-card-title" }, t("spine.debug"),
-          h("span", { className: "sp-card-sub" }, t("spine.debugHint")),
-          h(Chevron)),
+        h("summary", { className: "sp-card-title" }, t("spine.debug"), h(Chevron)),
         h("div", { className: "sp-detail" },
           h("button", {
             className: "sp-btn sp-sub-close",
@@ -2581,9 +2568,10 @@ window.__ModuleLoader__.load({
         composition,
         // 第一屏：左边刀法统计（下方补「更多」入口，吃掉空白），右边切点；
         // 切点 / 文档 / 调试都是二级界面（浮层），收起时只占一行标题，不挤压主页面。
+        // 右列放「切点 + 更多」：切点卡收起时只有两行，下面正好接调试/文档两个入口。
         h("div", { className: "sp-duo" },
-          h("div", { className: "sp-duo-col" }, statsCard, entriesCard),
-          h("div", { className: "sp-duo-col" }, knobsCard)),
+          h("div", { className: "sp-duo-col" }, statsCard),
+          h("div", { className: "sp-duo-col" }, knobsCard, entriesCard)),
         timelineCard,
         docsCard,
         debugCard);
