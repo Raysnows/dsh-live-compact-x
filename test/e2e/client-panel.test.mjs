@@ -1,6 +1,7 @@
 /** 浏览器半边：在假加载器里跑起来，验统计、验面板渲染、验注册。 */
 let pass = 0, fail = 0;
 const ok = (c, n, x = "") => { if (c) { pass++; console.log("  ok  " + n); } else { fail++; console.log("  FAIL  " + n + " " + x); } };
+const EMPTY_KINDS_FAKE = { small: 0, merge: 0, plugin: 0, big: 0, official: 0, manual: 0 };
 const isSecondaryCard = (n) => n && n.type === "details" && String(n.props?.className || "").split(/\s+/).includes("sp-details") && String(n.props?.className || "").split(/\s+/).includes("sp-card");
 
 const inserted = [];
@@ -84,7 +85,9 @@ ok(T.kindOfCut({ kind: "official" }) === "official", "官方认官方");
 ok(T.kindOfCut({ kind: "plugin" }) === "plugin", "旧卡认旧卡");
 ok(T.kindOfCut({ kind: "spine" }) === "small", "1.3.13 之前的 spine 记成小刀");
 ok(T.kindOfCut({}) === "plugin" && T.kindOfCut(null) === "plugin", "没有 kind 时不瞎猜，算旧卡");
-ok(new Set(["small", "merge", "official", "plugin"].map((k) => T.KNIFE_COLOR[k])).size === 4, "四种刀法四种颜色");
+ok(new Set(["small", "merge", "official", "plugin", "manual", "big"].map((k) => T.KNIFE_COLOR[k])).size === 6, "六种刀法六种颜色（手动不再和旧卡片撞色）");
+ok(T.KNIFE_COLOR.manual !== T.KNIFE_COLOR.plugin && T.KNIFE_COLOR.manual !== T.KNIFE_COLOR.official,
+  "手动与旧卡片 / 官方配色必须区分开：" + T.KNIFE_COLOR.manual + " vs " + T.KNIFE_COLOR.plugin);
 
 console.log("4. 统计口径");
 const cuts = [
@@ -298,7 +301,8 @@ ok(uniqueSections.filter((sec) => sec === "spine.cutPoint").length === 1, "切�
   walk(tree, ({ kind, node }) => {
     if (kind === "node" && node.props && node.props["data-sub-open"]) openers.push(node.props["data-sub-open"]);
   });
-  ok(openers.slice().sort().join(",") === "debug,docs,knobs", "三个二级界面都有入口：" + openers.join(","));
+  // 手动压缩在面板里不再有入口：它只是统计表里的一类刀法。
+  ok(openers.slice().sort().join(",") === "debug,docs,knobs", "三个入口（切点 / 调试 / 文档），手动压缩不再是入口：" + openers.join(","));
   const css = String(T.SPINE_CSS);
   ok(css.includes(".sp-details[data-sub][open]{position:fixed"), "打开的二级界面是固定定位浮层（不把页面撑长）");
 
@@ -341,75 +345,89 @@ ok(uniqueSections.filter((sec) => sec === "spine.cutPoint").length === 1, "切�
   ok(scrimClosed === 1, "点空白处（遮罩）会收起浮层");
   ok(String(T.SPINE_CSS).includes(".sp-sub-scrim{position:fixed;inset:0;z-index:81"), "遮罩铺满视口，压在浮层下面");
 
-  // 摘要行自己接管点击：原生 toggle 不会被用上（否则「返回」改不动它）
-  let summary = null;
-  walk(T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, { ...uiBase, subView: null }), ({ kind, node }) => {
-    if (kind === "node" && node.type === "summary" && node.props && node.props["data-sub-open"] === "knobs") summary = node;
-  });
-  ok(Boolean(summary) && typeof summary.props.onClick === "function", "切点摘要是受控入口");
+  // 切点整张卡就是入口：点卡片任何地方都能进浮窗
   let opened2 = 0;
   const controlled = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, { ...uiBase, subView: null, openSub: () => { opened2 += 1; } });
-  let summary2 = null;
+  let openCard = null;
   walk(controlled, ({ kind, node }) => {
-    if (kind === "node" && node.type === "summary" && node.props && node.props["data-sub-open"] === "knobs") summary2 = node;
+    if (kind === "node" && node.type === "button" && node.props && node.props["data-sub-open"] === "knobs") openCard = node;
   });
-  let prevented = false;
-  summary2.props.onClick({ preventDefault: () => { prevented = true; } });
-  ok(prevented && opened2 === 1, "点摘要会置状态（并阻止原生 toggle）");
+  ok(Boolean(openCard), "切点卡本身就是入口");
+  ok(String(openCard.props.className).includes("sp-card-open"), "入口是整张卡片，不是一行小按钮");
+  openCard.props.onClick();
+  ok(opened2 === 1, "点整张切点卡会打开浮窗");
+  let dupe = 0;
+  walk(controlled, ({ kind, node }) => {
+    if (kind === "node" && node.type === "button" && node.props && node.props["data-sub-open"] === "knobs") dupe += 1;
+  });
+  ok(dupe === 1, "切点只有一个入口（不再额外挂「调整旋钮」按钮）：" + dupe);
 }
-// 手动压缩：右列独立一块，点按钮发 /compact；结果只写一行。
+// 手动压缩：只作为统计表里的一类刀法，面板里不再有压缩按钮、也没有独立页面。
+// （用户明确要求：不要在面板里压缩，那一类只要能被统计到就行。）
 {
   const props = { t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() };
-  let ran = 0;
-  const treeCompact = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, {
-    compact: { pending: false, ok: false, error: "", run: () => { ran += 1; } },
-  });
-  let btn = null;
-  walk(treeCompact, ({ kind, node }) => {
-    if (kind === "node" && node.type === "button" && node.props && node.props["data-compact"] === "run") btn = node;
-  });
-  ok(Boolean(btn), "有「手动压缩」按钮");
-  btn.props.onClick();
-  ok(ran === 1, "点一下会去发 /compact");
-  const textsCompact = [];
-  walk(treeCompact, ({ kind, value }) => { if (kind === "text") textsCompact.push(value); });
-  ok(!textsCompact.includes("spine.moreInfo"), "不再有「更多信息」这块标题");
+  const withManual = {
+    ...fakeState,
+    kinds: { ...EMPTY_KINDS_FAKE, small: 2, manual: 1, official: 1 },
+    savedBy: { ...EMPTY_KINDS_FAKE, small: 1000, manual: 500, official: 200 },
+  };
+  for (const view of [
+    { subView: null, openSub() {}, closeSub() {} },
+    { subView: "compact", openSub() {}, closeSub() {} },
+    { subView: null, openSub() {}, closeSub() {}, compact: { pending: false, ok: false, error: "", run: () => {} } },
+  ]) {
+    const tree = T.renderPanel(props, withManual, "session", () => {}, () => {}, null, view);
+    let runBtn = null;
+    let manualPage = 0;
+    walk(tree, ({ kind, node }) => {
+      if (kind !== "node" || !node.props) return;
+      if (node.type === "button" && node.props["data-compact"] === "run") runBtn = node;
+      if (node.type === "details" && node.props["data-sub"] === "compact") manualPage += 1;
+    });
+    ok(!runBtn, "面板里没有压缩按钮（subView=" + view.subView + "）");
+    ok(manualPage === 0, "没有手动压缩的二级页面（subView=" + view.subView + "）");
+  }
+  const textsManual = [];
+  walk(T.renderPanel(props, withManual, "session", () => {}, () => {}, null, { subView: null, openSub() {}, closeSub() {} }), ({ kind, value }) => { if (kind === "text") textsManual.push(value); });
+  ok(textsManual.includes("spine.knifeManual"), "刀法统计里有「手动」这一行");
 
-  const pendingTree = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, {
-    compact: { pending: true, ok: false, error: "", run: () => {} },
-  });
-  let pendingBtn = null;
-  walk(pendingTree, ({ kind, node }) => {
-    if (kind === "node" && node.type === "button" && node.props && node.props["data-compact"] === "run") pendingBtn = node;
-  });
-  ok(pendingBtn.props.disabled === true, "压缩中按钮置灰，防连点");
-
-  const doneTree = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, {
-    compact: { pending: false, ok: true, error: "", run: () => {} },
-  });
-  const doneTexts = [];
-  walk(doneTree, ({ kind, value }) => { if (kind === "text") doneTexts.push(value); });
-  ok(doneTexts.includes("spine.compacted"), "成功只写一行「已提交」");
-
-  // 右列四块：切点 / 手动压缩 / 调试 / 文档，顺序固定
-  const fill = [];
-  walk(treeCompact, ({ kind, node }) => {
+  // 统计表六行都是普通行：整行不可点，也没有展开箭头。
+  const knifeRows = [];
+  walk(T.renderPanel(props, withManual, "session", () => {}, () => {}, null, { subView: null, openSub() {}, closeSub() {} }), ({ kind, node }) => {
     if (kind !== "node" || !node.props) return;
-    if (String(node.props.className || "").split(/\s+/).includes("sp-duo-fill")) fill.push(node);
+    if (String(node.props.className || "").split(/\s+/).includes("sp-trow")) knifeRows.push(node);
   });
-  ok(fill.length === 1, "右列是单独一列（" + fill.length + "）");
-  const kids = (fill[0].children || []).map((child) => {
-    if (!child || !child.props) return "";
-    if (child.props["data-sub-open"]) return child.props["data-sub-open"];
-    if (child.props.className && String(child.props.className).includes("sp-knobs-card")) return "knobs";
-    const inner = (child.children || []).find((c) => c && c.props && c.props["data-compact"] === "run");
-    return inner ? "compact" : "";
-  });
-  ok(kids.filter(Boolean).join(",") === "knobs,compact,debug,docs", "右列顺序：切点 → 手动压缩 → 调试 → 文档（" + kids.join(",") + "）");
+  ok(knifeRows.length === 6, "统计表六行（" + knifeRows.length + "）");
+  ok(knifeRows.every((n) => n.type === "div" && !n.props["data-sub-open"]), "没有哪一行是可点的入口");
+  ok(knifeRows.every((n) => !JSON.stringify(n.children).includes('"sp-chev"')), "行内没有展开箭头");
+  const css = String(T.SPINE_CSS);
+  ok(!css.includes("sp-trow-open"), "没有可点行的样式残留");
+  ok(!/\n\.sp-compact-run\{/.test("\n" + css), "没有压缩按钮的样式残留");
+  ok(!css.includes(".sp-trow{font-size:12.5px;border-radius:6px;cursor:pointer}"), "行不显示手形光标");
 }
 // 信息密度：卡片内边距与 KPI 间距都收紧过，值写死——改样式时这里会提醒。
 ok(String(T.SPINE_CSS).includes("padding:8px 10px"), "卡片内边距收紧到 8px/10px");
 ok(String(T.SPINE_CSS).includes("minmax(106px,1fr)"), "KPI 最小宽度收到 106px");
+// 日间模式：dimmed 在浅色主题下是 rgb(225,229,238)，白底上等于隐形。整份 CSS 不许再出现它。
+{
+  const css = String(T.SPINE_CSS);
+  ok(!/label-dimmed/.test(css), "面板不再用 label-dimmed（日间模式看不清）");
+  const hintRule = (css.match(/(?:^|\n)\.sp-field-hint\{[^}]*\}/) || [""])[0];
+  ok(hintRule.includes("11px") && hintRule.includes("label-secondary"), "旋钮说明 11px + secondary：" + hintRule);
+  // 层次：组标题(12.5/700/primary) > 旋钮名(12/600/primary) = 当前值(12.5/700) > 说明(11) > 范围(10.5/0.8)。
+  // 四层全是同一个字号同一档颜色时，用户找不到自己在调哪一项。
+  const groupRule = (css.match(/(?:^|\n)\.sp-group-title\{[^}]*\}/) || [""])[0];
+  const headRule2 = (css.match(/(?:^|\n)\.sp-field-head\{[^}]*\}/) || [""])[0];
+  const valueRule = (css.match(/(?:^|\n)\.sp-value\{[^}]*\}/) || [""])[0];
+  const rangeRule = (css.match(/(?:^|\n)\.sp-field-range\{[^}]*\}/) || [""])[0];
+  ok(groupRule.includes("font-weight:700") && groupRule.includes("label-primary"), "组标题最重且用主色：" + groupRule.slice(0, 80));
+  ok(headRule2.includes("font-weight:600") && headRule2.includes("label-primary"), "旋钮名加粗用主色：" + headRule2.slice(0, 80));
+  ok(valueRule.includes("font-weight:700") && parseFloat(valueRule.match(/font-size:([\d.]+)px/)[1]) > parseFloat(hintRule.match(/font-size:([\d.]+)px/)[1]),
+    "当前值比说明大，扫一眼就看到数字：" + valueRule.slice(0, 70));
+  ok(rangeRule.includes("10.5px") && rangeRule.includes("opacity"), "取值范围最小、最淡，退到最后：" + rangeRule.slice(0, 80));
+  const kpiHint = (css.match(/\.sp-kpi-hint\{[^}]*\}/) || [""])[0];
+  ok(kpiHint.includes("font-size:11px") && kpiHint.includes("label-secondary"), "KPI 提示 11px + secondary：" + kpiHint);
+}
 const knobOrder = T.KNOB_GROUPS.map((g) => g.id).join(",");
 ok(knobOrder === "small,big,script,mid", "本地脚本组排在刀法之后、实验性中刀之前（" + knobOrder + "）");
 ok(T.KNOB_GROUPS.find((g) => g.id === "mid").experimental === true, "中刀标了实验性");
@@ -510,12 +528,12 @@ console.log("9b. 切点卡：预设档 + 参考范围");
   let cutCard = null;
   walk(tree, (entry) => {
     const n = entry.node;
-    // 旋钮现在收在切点卡内部的 details 里（标题行还在外层卡片上）。
-    if (n && n.type === "details" && String(n.props?.className || "").includes("sp-knobs")) cutCard = n;
+    // 旋钮现在在独立的浮层页面里（data-sub=knobs），收起时不占页面。
+    if (n && n.type === "details" && n.props && n.props["data-sub"] === "knobs") cutCard = n;
   });
-  ok(Boolean(cutCard), "没有 open 属性的 details：默认收起");
-  ok(Boolean(cutCard) && String(cutCard.props.className).includes("sp-knobs"), "旋钮收在切点卡的 details 里（" + (cutCard && cutCard.props.className) + "）");
-  ok(cutCard && cutCard.props.open === false, "切点卡默认不展开（二级界面按需打开）");
+  ok(Boolean(cutCard), "旋钮有独立的浮层页面");
+  ok(Boolean(cutCard) && String(cutCard.props.className).includes("sp-modal-only"), "浮层收起时不占页面（sp-modal-only）");
+  ok(cutCard && cutCard.props.open === false, "切点浮层默认不展开（按需打开）");
   const inside = (root, label) => {
     const found = [];
     walk(root, (entry) => {
@@ -1118,6 +1136,22 @@ console.log("9i. 时间线时间列：表格用短格式，完整时间进 title
   ok(!T.fmtRowTime(sample).includes("2026"), "表格里不再带年份（放不下）");
   ok(T.fmtClock(sample) === "2026-11-25 00:15:33", "fmtClock 仍然是完整日期：" + T.fmtClock(sample));
   ok(T.fmtClock(sample).length === 19, "完整日期仍为 19 字符");
+// KPI 那一格只有 ~100px：完整的 19 字符会被省略号吃掉，所以给短格式，完整时间进 title。
+ok(T.fmtStamp(0) === "—" && T.fmtStamp(undefined) === "—", "KPI 时间没有值也是破折号");
+ok(T.fmtStamp(sample) === "11-25 00:15", "KPI 时间格式 MM-DD HH:mm：" + T.fmtStamp(sample));
+ok(T.fmtStamp(sample).length === 11, "KPI 时间 11 字符，装得进 KPI 格子（" + T.fmtStamp(sample).length + "）");
+{
+  const shortState = { ...fakeState, cuts: [{ id: "s1", kind: "manual", tokens: 5000, start: 1, end: 9, time: sample, rawNames: [], model: "m" }] };
+  const shortTree = T.renderPanel({ t: (k) => k, model, actions }, shortState, "session", () => {}, () => {});
+  let lastKpi = null;
+  walk(shortTree, ({ kind, node }) => {
+    if (kind !== "node" || !node.props) return;
+    const cls = String(node.props.className || "").split(/\s+/);
+    if (cls.includes("sp-kpi-value") && (node.children || []).join("") === T.fmtStamp(sample)) lastKpi = node;
+  });
+  ok(Boolean(lastKpi), "「最近一刀」KPI 显示短时间而不是被截断");
+  ok(lastKpi && lastKpi.props.title === T.fmtClock(sample), "短时间上挂了完整时间的 title：" + (lastKpi && lastKpi.props.title));
+}
 
   // 时间线单元格：文本是短格式，title 是完整日期
   const timedCuts = [
@@ -1602,12 +1636,28 @@ console.log("9i. 本版更新卡 + 收尾停止线下限");
   ok(embeddedTexts.includes("v" + newest), "内嵌要点带着当前版本号（v" + newest + "）");
 ok(T.CLIENT_NEWS.length >= 8, "内嵌要点覆盖今天的重要版本（" + T.CLIENT_NEWS.length + " 条）");
   // 发布过的版本必须都在：1.3.25 / 1.3.26 / 1.3.27 都上过 npm，不能因合并未发布版本被删掉
-  for (const must of ["1.3.27", "1.3.26", "1.3.25", "1.3.24", "1.3.23", "1.3.22", "1.3.20", "1.3.19"]) {
+  for (const must of ["1.4.7", "1.4.6", "1.4.0", "1.3.32", "1.3.27", "1.3.26", "1.3.25", "1.3.24", "1.3.23", "1.3.22", "1.3.20", "1.3.19"]) {
     ok(T.CLIENT_NEWS.some((e) => e.version === must), "已发布版本 " + must + " 仍在面板要点里");
   }
 ok(T.CLIENT_NEWS.every((e) => Array.isArray(e.bullets) && e.bullets.length > 0), "每条都有要点");
 ok(!T.CLIENT_NEWS.some((e) => /renderPanel|slice\(|参数位|scope, bump/.test(e.title + " " + e.bullets.join(" "))), "要点里不出现函数名或参数名");
 ok(T.CLIENT_NEWS.every((e) => !e.bullets.some((b) => b.length > 90)), "每条要点一句话说得完（不超 90 字）");
+  // §0.2c：发版必标参考文献。最新这一版必须带出处，且每条出处要么有链接、要么是仓库内文档。
+  {
+    const latest = T.CLIENT_NEWS[0];
+    ok(latest.version === "1.4.7", "面板最新一条是本次发布的 1.4.7：" + latest.version);
+    ok(Array.isArray(latest.refs) && latest.refs.length >= 2, "最新版带参考文献（" + ((latest.refs || []).length) + " 条）");
+    ok(latest.refs.every((r) => r && typeof r.text === "string" && r.text.length > 8), "每条出处都有说明文字");
+    ok(latest.refs.every((r) => !r.url || /^https:\/\//.test(r.url)), "出处链接必须是 https");
+    // 卡片要真的把参考文献画出来，不能只存在数据里
+    const withRefs = T.NewsCard({ t: (k) => k, news: { entries: T.CLIENT_NEWS }, version: latest.version, open: true, source: "embedded", onClose() {} });
+    const refsTexts = [];
+    walk(withRefs, ({ kind, node }) => {
+      if (kind === "node" && node.props && String(node.props.className || "").includes("sp-news-refs")) refsTexts.push(node);
+    });
+    ok(refsTexts.length >= 1, "更新卡里画出了参考文献块（" + refsTexts.length + "）");
+    ok(String(T.SPINE_CSS).includes(".sp-news-refs-list{"), "参考文献有样式");
+  }
   hooks.length = 0;
   ok(T.NewsCard({ t: (k) => k, news: { entries: T.CLIENT_NEWS }, version: "1.3.26", open: false, source: "embedded" }) === null, "收起后不画（胶囊仍可点开）");
   ok(typeof T.newsShouldAuto("1.3.26") === "boolean", "自动展开判定是纯函数");

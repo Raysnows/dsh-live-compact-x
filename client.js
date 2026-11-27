@@ -460,20 +460,22 @@ window.__ModuleLoader__.load({
       "spine.knifeSmall": "小刀",
       "spine.knifeMerge": "中刀",
       "spine.knifeBig": "大刀",
+      "spine.knifeManual": "手动",
       "spine.knifeOfficial": "官方",
       "spine.knifePlugin": "旧卡片",
       "spine.knifeShortBig": "大刀",
       "spine.knifeShortOfficial": "官方",
       "spine.knifeShortPlugin": "旧卡",
       "spine.knifeBigHint": "本插件让大刀接手（当前模型或本地脚本），算我们的刀",
-      "spine.knifeOfficialHint": "插件接管前后的原生压缩",
+      "spine.knifeManualHint": "你自己按的压缩，既不是插件的刀，也不是宿主自动触发",
+      "spine.knifeOfficialHint": "宿主自动触发的原生压缩",
       "spine.knifeStats": "刀法统计",
       "spine.colKnife": "刀法",
       "spine.colCount": "刀数",
       "spine.colSaved": "切掉",
       "spine.colShare": "占比",
       "spine.colAvg": "平均",
-      "spine.knifeNote": "小刀、中刀、大刀都是本插件切的（大刀默认让当前模型归纳，也可切成本地脚本）；官方 = 插件接管之前或让位时的原生压缩，旧卡片 = 早期没记刀名的卡。",
+      "spine.knifeNote": "小刀、中刀、大刀是本插件按策略切的（大刀默认让当前模型归纳，也可切成本地脚本）；手动 = 你自己敲的 /compact；官方 = 宿主自动触发；旧卡片 = 早期没记刀名的卡。这个面板只做统计，压缩请直接在对话里发 /compact。",
       "spine.experimental": "实验性",
       "spine.lineClashHint": "中刀永远轮不到：中刀启用线必须低于大刀启用线，把中刀调低或大刀调高。当前",
       "spine.enableMid": "启用中刀（合并整张卡片，默认关闭）",
@@ -493,11 +495,6 @@ window.__ModuleLoader__.load({
       "spine.scriptModelHint": "用你当前正在用的模型把整段归纳成摘要（不是 DeepSeek 官方账号的模型）：更连贯、更会取舍，但会多发一次模型请求，有 LLM 成本。",
       "spine.cutPointAdjust": "调整旋钮（展开后改值、保存）",
       "spine.openKnobs": "调整旋钮",
-      "spine.compactTitle": "手动压缩",
-      "spine.compactBtn": "压缩这条会话",
-      "spine.compacting": "正在压缩…",
-      "spine.compacted": "已提交 /compact",
-      "spine.compactFailed": "压缩失败：",
       "spine.subBack": "返回",
       "spine.moreInfo": "更多信息",
       "spine.diagTitle": "提交问题日志",
@@ -509,6 +506,8 @@ window.__ModuleLoader__.load({
       "spine.scriptActive": "当前",
       "spine.scriptDraft": "改了要保存才生效",
       "spine.docs": "文档与出处",
+      "spine.docsDesc": "版本、README、更新日志与仓库地址，就地预览或复制",
+      "spine.newsRefs": "参考文献",
       "spine.docsHint": "点开看文档，或复制路径",
       "spine.docsReadme": "README",
       "spine.docsChangelog": "更新记录",
@@ -527,6 +526,7 @@ window.__ModuleLoader__.load({
       "spine.docsIssues": "反馈",
       "spine.version": "版本",
       "spine.debug": "调试信息",
+      "spine.debugDesc": "目录、设置文件、刀法计数；报问题可一键复制脱敏诊断",
       "spine.debugHint": "默认收起",
       "spine.debugSid": "会话 ID",
       "spine.debugCounts": "计数",
@@ -684,6 +684,7 @@ window.__ModuleLoader__.load({
       "spine.knifeSmall": "Small cut",
       "spine.knifeMerge": "Merge cut",
       "spine.knifeBig": "Big cut",
+      "spine.knifeManual": "Manual",
       "spine.knifeOfficial": "Official",
       "spine.knifePlugin": "Legacy card",
       "spine.knifeShortBig": "big",
@@ -703,11 +704,6 @@ window.__ModuleLoader__.load({
       "spine.scriptModelHint": "The model you are currently using writes the summary — not a DeepSeek official-account model. It is more coherent and selective, but makes one extra LLM request.",
       "spine.cutPointAdjust": "Adjust knobs (expand to edit and save)",
       "spine.openKnobs": "Adjust knobs",
-      "spine.compactTitle": "Compact now",
-      "spine.compactBtn": "Compact this session",
-      "spine.compacting": "Compacting…",
-      "spine.compacted": "Submitted /compact",
-      "spine.compactFailed": "Compaction failed: ",
       "spine.subBack": "Back",
       "spine.moreInfo": "More",
       "spine.diagTitle": "Report a problem",
@@ -718,14 +714,15 @@ window.__ModuleLoader__.load({
       "spine.scriptLocalHint": "A local script extracts the same span with zero model calls and seq-based recall. It is less semantic; an incomplete card is refused and never falls back to the model silently.",
       "spine.scriptActive": "Active",
       "spine.scriptDraft": "Saved only after you save",
-      "spine.knifeOfficialHint": "Native compaction outside the plugin",
+      "spine.knifeManualHint": "You ran /compact yourself: neither a plugin cut nor host auto-compaction",
+      "spine.knifeOfficialHint": "Native compaction triggered by the host itself",
       "spine.knifeStats": "Knife stats",
       "spine.colKnife": "knife",
       "spine.colCount": "cuts",
       "spine.colSaved": "cut",
       "spine.colShare": "share",
       "spine.colAvg": "avg",
-      "spine.knifeNote": "Small, merge, and big cuts are all ours (big summarises with your current model by default, or a local script). Official = native compaction before takeover or while standing down; legacy = early cards without a knife label.",
+      "spine.knifeNote": "Small, merge, and big cuts are all ours (big summarises with your current model by default, or a local script). Manual = a /compact you ran yourself; official = native compaction; legacy = early cards without a knife label.",
       "spine.experimental": "experimental",
       "spine.lineClashHint": "The merge cut never gets a turn: it must start below the big-knife line — lower it or raise the big-knife line. Current",
       "spine.enableMid": "Enable the merge cut (joins whole cards, off by default)",
@@ -733,6 +730,8 @@ window.__ModuleLoader__.load({
       "spine.groupMidHint": "When the context is huge, joins continuous old cards; skips unless it pays off.",
       "spine.groupBigHint": "Only when the first two knives cannot cut does the big cut take over: your current model by default, or a zero-LLM local script.",
       "spine.docs": "Docs",
+      "spine.docsDesc": "Version, README, changelog and repo links, in place",
+      "spine.newsRefs": "References",
       "spine.docsHint": "open or copy a path",
       "spine.docsReadme": "README",
       "spine.docsChangelog": "Changelog",
@@ -750,6 +749,7 @@ window.__ModuleLoader__.load({
       "spine.docsIssues": "Issues",
       "spine.version": "Version",
       "spine.debug": "Debug info",
+      "spine.debugDesc": "Paths, settings file and knife counters; copy a sanitized report",
       "spine.debugHint": "collapsed by default",
       "spine.debugSid": "Session ID",
       "spine.debugCounts": "Counters",
@@ -789,11 +789,18 @@ window.__ModuleLoader__.load({
 
     const SPINE_KEY = "spine.cuts";
     const SPINE_CSS = [
-      ".sp-root{box-sizing:border-box;height:100%;min-height:0;flex:1 1 auto;overflow-y:auto;padding:12px 14px 24px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5}",
+      // 两个主题共用一套「浅色底」：
+      //   bg-layer-1/2 在日间模式下都是纯白，靠它们做底色等于没底；
+      //   这里用当前的文字色兑 5% 透明度，深色下是提亮、日间下是压暗，两边都看得出层次。
+      ".sp-root{box-sizing:border-box;height:100%;min-height:0;flex:1 1 auto;overflow-y:auto;padding:12px 14px 24px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5;--sp-tint:color-mix(in srgb,var(--dsw-alias-label-primary) 5%,transparent);--sp-tint-2:color-mix(in srgb,var(--dsw-alias-label-primary) 9%,transparent)}",
       // 这个页签整页铺开：宿主看到 data-conversation-composer-overlay 会把 viewArea 撑满、
       // 把输入条改成绝对定位，同时收掉正文两侧的宽度拖拽条。再按我们自己的标记把输入条藏掉，
       // 只影响压缩页——轨迹页也用了同一个属性，不能按它一刀切。
       "[data-conversation-scroll]:has([data-spine-cover])>[data-composer-seat]{display:none!important}",
+      // 宿主的主题开关是 body[data-ds-dark-theme]：日间模式下遮罩要更轻、分刀线要更淡，
+      // 否则白底上会出现一圈脏灰。深色模式用默认值，不重复写。
+      "body:not([data-ds-dark-theme]) .sp-root{--sp-scrim:rgba(15,17,21,.18);--sp-seam:rgba(15,17,21,.22);--sp-dot-ring:rgba(255,255,255,.55);--sp-dot-shade:rgba(15,17,21,.18);--sp-dot-drop:rgba(15,17,21,.22)}",
+      "body[data-ds-dark-theme] .sp-root{--sp-dot-ring:rgba(255,255,255,.28);--sp-dot-shade:rgba(0,0,0,.4);--sp-dot-drop:rgba(0,0,0,.5)}",
       ".sp-topbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}",
       ".sp-scope{display:inline-flex;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
       ".sp-docrow>.sp-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}",
@@ -807,31 +814,48 @@ window.__ModuleLoader__.load({
       ".sp-master:not(.sp-master-on){border-color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-border-l1))}",
       ".sp-master-state{font-weight:600;font-variant-numeric:tabular-nums}",
       ".sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(106px,1fr));gap:6px;margin-bottom:8px}",
-      ".sp-kpi{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:9px;padding:6px 9px;min-width:0}",
+      ".sp-kpi{background:var(--sp-tint,var(--dsw-alias-bg-layer-1));border:1px solid var(--dsw-alias-border-l2);border-radius:9px;padding:6px 9px;min-width:0}",
       ".sp-kpi-label{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".sp-kpi-value{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
-      ".sp-kpi-hint{font-size:10.5px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-secondary));margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
-      ".sp-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:8px 10px;margin-bottom:8px}",
+      ".sp-kpi-hint{font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+      ".sp-card{background:var(--sp-tint,var(--dsw-alias-bg-layer-1));border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:8px 10px;margin-bottom:8px}",
       // 两块并排：右边那块以前整行空着，把「刀法统计」和「切点」放一起，打开就都看到。
       ".sp-duo{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr);gap:8px;margin-bottom:8px;align-items:stretch}",
       ".sp-duo>.sp-card{margin-bottom:0}",
       ".sp-duo-col{display:grid;gap:8px;align-content:stretch;min-width:0}",
       // 右列：切点自然高度，下面三块（手动压缩 / 调试 / 文档）平分剩余高度，底边和左列对齐。
-      ".sp-duo-col.sp-duo-fill{grid-template-rows:auto 1fr 1fr 1fr}",
+      ".sp-duo-col.sp-duo-fill{grid-template-rows:auto 1fr}",
+      // 两个入口缩成一行小按钮，贴着右列底部，和左列底边对齐；空白交给列间，不再撑成两张卡。
+      ".sp-entry-row{display:grid;grid-template-rows:1fr 1fr;gap:8px;align-self:stretch}",
+      ".sp-card-open{display:block;width:100%;font:inherit;text-align:left;color:inherit;cursor:pointer}",
+      ".sp-card-open:hover{background:var(--dsw-alias-interactive-bg-hover)}",
+      ".sp-knobs-open{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;font-size:11px;color:var(--dsw-alias-label-secondary)}",
       ".sp-entry-card{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;font:inherit;color:var(--dsw-alias-label-primary);text-align:left;cursor:pointer;margin-bottom:0;padding:10px 12px}",
+      // 入口身份：小块、轻边框，不做成一张大卡；点开后是浮层，所以给一句说明干什么用。
+      ".sp-entry-mini{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;height:100%;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);text-align:left;cursor:pointer;padding:8px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--sp-tint,var(--dsw-alias-bg-layer-2));transition:border-color .12s ease,background .12s ease}",
+      ".sp-entry-mini:hover{border-color:var(--dsw-alias-label-secondary);background:var(--sp-tint-2,var(--dsw-alias-interactive-bg-hover))}",
+      ".sp-entry-mini:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#6F9FE8);outline-offset:1px}",
+      // 左侧身份色带：调试=琥珀（本机现状）、文档=蓝（对外出处），和顶栏配色同源。
+      ".sp-entry-bar{flex:0 0 auto;width:3px;align-self:stretch;border-radius:2px;background:var(--sp-entry-accent,var(--dsw-alias-label-secondary));opacity:.85}",
+      ".sp-entry-mini[data-tone='debug']{--sp-entry-accent:#E0A35E}",
+      ".sp-entry-mini[data-tone='docs']{--sp-entry-accent:#6F9FE8}",
+      ".sp-entry-text{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 auto}",
+      ".sp-entry-desc{font-size:11px;line-height:1.45;color:var(--dsw-alias-label-secondary)}",
+
       ".sp-entry-card:hover{background:var(--dsw-alias-interactive-bg-hover)}",
       ".sp-entry-card:disabled{opacity:.55;cursor:default}",
       ".sp-duo-col>.sp-card{margin-bottom:0}",
       // 二级界面：切点 / 文档 / 调试打开时脱离文档流、浮在面板上方，不再把主页面撑长。
       ".sp-details[data-sub][open]{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:82;width:min(860px,calc(100vw - 40px));max-height:min(82vh,820px);overflow:auto;margin:0;padding:12px 14px 14px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.34)}",
       ".sp-sub-close{display:inline-flex;align-items:center;gap:6px;margin:2px 0 8px}",
-      ".sp-sub-scrim{position:fixed;inset:0;z-index:81;background:rgba(0,0,0,.32)}",
+      // 遮罩：日间模式用 0.32 的黑会把底下的白卡压成脏灰，换成更轻的一档。
+      ".sp-sub-scrim{position:fixed;inset:0;z-index:81;background:var(--sp-scrim,rgba(0,0,0,.32))}",
       // 二级界面专用的 details：收起时整块不占位（入口在右列卡片里，底部不再重复一条标题）。
       ".sp-modal-only:not([open]){display:none}",
       ".sp-entries{display:grid;gap:6px}",
       ".sp-entry{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:6px 9px}",
       ".sp-entry-name{font-size:12px;color:var(--dsw-alias-label-primary)}",
-      ".sp-entry-hint{font-size:10.5px;color:var(--dsw-alias-label-secondary)}",
+      ".sp-entry-hint{font-size:11px;color:var(--dsw-alias-label-secondary)}",
       ".sp-strategy{font-size:11px;line-height:1.65;color:var(--dsw-alias-label-secondary);margin:2px 0 6px}",
       ".sp-knobs-summary{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary);cursor:pointer;list-style:none;padding:2px 0}",
       ".sp-knobs-summary::-webkit-details-marker{display:none}",
@@ -841,27 +865,29 @@ window.__ModuleLoader__.load({
       ".sp-bar{display:flex;gap:2px;height:22px;border-radius:6px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
       ".sp-seg{height:100%;min-width:2px}",
       ".sp-bar-cut{gap:0}",
-      ".sp-bar-cut .sp-seg{flex-shrink:1;box-shadow:inset -1px 0 0 rgba(0,0,0,.45)}",
+      ".sp-bar-cut .sp-seg{flex-shrink:1;box-shadow:inset -1px 0 0 var(--sp-seam,rgba(0,0,0,.45))}",
       ".sp-bar-cut .sp-seg:last-child{box-shadow:none}",
       ".sp-bar-cut .sp-seg-first{margin-left:2px}",
       ".sp-seg:hover{opacity:.72}",
       ".sp-legend{display:flex;flex-wrap:wrap;gap:12px 16px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:8px;font-variant-numeric:tabular-nums}",
-      ".sp-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}",
+      // 色点做得像一颗有体积的小方块：外描边定形，上方高光提亮，下方落影压住。
+      // 只加外扩阴影会把 8px 的小点晕成一团灰，反而更糊——所以高光是内阴影，外面只留一圈细边。
+      ".sp-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle;box-shadow:inset 0 1px 0 var(--sp-dot-ring,rgba(255,255,255,.45)),inset 0 -1px 0 var(--sp-dot-shade,rgba(0,0,0,.22)),0 1px 2px var(--sp-dot-drop,rgba(15,17,21,.28))}",
       ".sp-thead,.sp-trow{display:grid;grid-template-columns:1fr 58px 78px 58px 66px;gap:8px;align-items:center;padding:4px 6px}",
-      ".sp-thead{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary);border-bottom:1px solid var(--dsw-alias-border-l2);margin-bottom:2px}",
+      ".sp-thead{font-size:11px;letter-spacing:.02em;text-transform:uppercase;color:var(--dsw-alias-label-secondary);border-bottom:1px solid var(--dsw-alias-border-l2);margin-bottom:2px}",
       ".sp-trow{font-size:12.5px;border-radius:6px}",
       ".sp-trow:hover{background:var(--dsw-alias-interactive-bg-hover)}",
       ".sp-trow-off{opacity:.55}",
       ".sp-knife{display:flex;align-items:center;min-width:0}",
       // 时间列 92px：改短格式后是 "11-25 00:15:33"（14 字符），54px 装不下会截成 "2026-11…"。
-      ".sp-head{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 92px 26px 12px;gap:10px;padding:0 6px 4px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
+      ".sp-head{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 92px 26px 12px;gap:10px;padding:0 6px 4px;font-size:11px;letter-spacing:.02em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}",
       ".sp-row{display:grid;grid-template-columns:16px 74px 88px 56px 1fr 92px 26px 12px;gap:10px;align-items:center;padding:1px 6px;border-radius:6px;font-size:11.5px;line-height:1.6}",
       ".sp-cell-time{white-space:nowrap;font-variant-numeric:tabular-nums}",
       ".sp-scroll-tall{max-height:420px;overflow-y:auto;overscroll-behavior:contain}",
       ".sp-tl-more{display:flex;justify-content:center;margin-top:6px}",
       ".sp-head>span,.sp-row>span,.sp-trow>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
       ".sp-row:hover{background:var(--dsw-alias-interactive-bg-hover)}",
-      ".sp-badge{font-size:10.5px;line-height:17px;padding:0 6px;border-radius:999px;border:1px solid;text-align:center;white-space:nowrap}",
+      ".sp-badge{font-size:11px;line-height:18px;padding:0 7px;border-radius:999px;border:1px solid;text-align:center;white-space:nowrap;font-weight:600;background:color-mix(in srgb,currentColor 14%,transparent)}",
       ".sp-mono{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-variant-numeric:tabular-nums}",
       ".sp-num{text-align:right;font-variant-numeric:tabular-nums}",
       ".sp-dim{color:var(--dsw-alias-label-secondary)}",
@@ -887,18 +913,20 @@ window.__ModuleLoader__.load({
       ".sp-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:10px 14px}",
       ".sp-group{margin-bottom:12px}",
       ".sp-group:last-child{margin-bottom:0}",
-      ".sp-group-title{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-bottom:6px}",
+      // 三级层次：组标题 > 旋钮名 = 当前值 > 说明 > 取值范围。
+      // 以前四层全是 11px + secondary，读起来是一坨，找不到「我在调哪个」。
+      ".sp-group-title{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--dsw-alias-label-primary);margin-bottom:8px;letter-spacing:.01em}",
       ".sp-group-title::after{content:'';flex:1;height:1px;background:var(--dsw-alias-border-l2)}",
       ".sp-switch{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dsw-alias-label-secondary);margin-bottom:8px}",
       ".sp-field{display:flex;flex-direction:column;gap:4px;min-width:0}",
-      ".sp-field-head{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary)}",
-      ".sp-tag{font-size:10px;padding:0 5px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);white-space:nowrap}",
+      ".sp-field-head{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}",
+      ".sp-tag{font-size:10.5px;padding:0 5px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);white-space:nowrap}",
       ".sp-tag-warn{border-color:var(--dsw-alias-state-warning-primary,#C88A2E);color:var(--dsw-alias-state-warning-primary,#C88A2E)}",
       ".sp-field-row{display:flex;align-items:center;gap:6px}",
       ".sp-input{font:inherit;font-size:12px;width:100%;box-sizing:border-box;padding:3px 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
       ".sp-input:focus{border-color:var(--dsw-alias-state-business-primary);outline:none}",
       ".sp-input:disabled{opacity:.5}",
-      ".sp-field-hint{font-size:10.5px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-secondary));overflow-wrap:anywhere}",
+      ".sp-field-hint{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}",
       ".sp-empty{color:var(--dsw-alias-label-secondary);text-align:center;padding:14px 0;font-size:12px}",
       ".sp-foot{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:8px;flex-wrap:wrap}",
       ".sp-dot-sep{opacity:.45}",
@@ -906,7 +934,7 @@ window.__ModuleLoader__.load({
       ".sp-docrow{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:8px;align-items:center;padding:3px 0;border-bottom:1px dashed var(--dsw-alias-border-l2)}",
       ".sp-docrow:last-child{border-bottom:0}",
       ".sp-docactions{display:inline-flex;align-items:center;gap:6px;justify-self:end}",
-      ".sp-docnote{grid-column:1/-1;font-size:10.5px;line-height:1.4;color:var(--dsw-alias-label-secondary)}",
+      ".sp-docnote{grid-column:1/-1;font-size:11px;line-height:1.45;color:var(--dsw-alias-label-secondary)}",
       ".sp-docmiss{border-color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-border-l2));color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-label-secondary))}",
       ".sp-doclabel{font-size:11px;color:var(--dsw-alias-label-secondary)}",
       ".sp-docpre{grid-column:1/-1;max-height:260px;overflow:auto;margin:4px 0 6px;padding:8px 10px;border-radius:6px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l2)}",
@@ -920,15 +948,15 @@ window.__ModuleLoader__.load({
       ".sp-detail-row{display:grid;grid-template-columns:88px 1fr auto;gap:8px;align-items:center;font-size:11.5px}",
       ".sp-preset{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px}",
       ".sp-field-head>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
-      ".sp-value{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums;white-space:nowrap}",
+      ".sp-value{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums;white-space:nowrap}",
       ".sp-value-out{color:var(--dsw-alias-state-warning-primary,#C88A2E)}",
       ".sp-value-off{color:var(--dsw-alias-label-secondary);font-weight:400}",
-      ".sp-mini{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--dsw-alias-label-secondary);cursor:pointer;user-select:none;flex:0 0 auto}",
+      ".sp-mini{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--dsw-alias-label-secondary);cursor:pointer;user-select:none;flex:0 0 auto}",
       ".sp-mini input{margin:0}",
       ".sp-mini-on{color:var(--dsw-alias-label-primary)}",
       ".sp-range{flex:1 1 auto;width:100%;height:14px;margin:0;padding:0;background:transparent;cursor:pointer;accent-color:var(--dsw-alias-state-business-primary,#6F9FE8)}",
       ".sp-range:disabled{opacity:.45;cursor:not-allowed}",
-      ".sp-range-ends{display:flex;justify-content:space-between;font-size:10px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;margin-top:-2px}",
+      ".sp-range-ends{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;margin-top:-2px;opacity:.8}",
       ".sp-preset-row{gap:5px}",
       ".sp-preset-hint{font-size:11px;color:var(--dsw-alias-label-secondary);margin-right:auto}",
       ".sp-btn-plus{font-weight:700;min-width:26px;justify-content:center;padding:2px 6px}",
@@ -951,12 +979,13 @@ window.__ModuleLoader__.load({
       ".sp-form-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-primary)}",
       ".sp-scope-row{display:flex;gap:6px;flex-wrap:wrap}",
       ".sp-preset-form .sp-preset{margin-bottom:0}",
-      ".sp-field-range{font-size:10.5px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}",
+      ".sp-field-range{font-size:10.5px;line-height:1.45;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;opacity:.8}",
       ".sp-choice{margin-bottom:10px}",
       ".sp-choice-row{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 2px}",
-      ".sp-choice-on{border-color:var(--dsw-alias-brand-primary,#4C8DF6);color:var(--dsw-alias-brand-primary,#4C8DF6);font-weight:600}",
-      // sp-field-hint 是 10.5px + dimmed，在深色底上几乎融进背景（用户实测看不清）。
+      // brand-primary 在两个主题里都定义过，但浅色下它是近黑，选中态得靠 business 蓝区分。
+      ".sp-choice-on{border-color:var(--dsw-alias-state-business-primary,#4C8DF6);color:var(--dsw-alias-state-business-primary,#4C8DF6);font-weight:600}",
       // 这两行是「选哪个」的唯一说明，必须能读：抬字号、用 secondary、给一块底。
+      // （别再退回 dimmed：那个 token 在日间模式下是浅灰白，白底上等于隐形。）
       ".sp-choice-hint{font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-secondary);padding:6px 8px;background:var(--dsw-alias-bg-layer-2);border-radius:6px;margin-top:4px}",
       ".sp-choice-now{font-size:11.5px;color:var(--dsw-alias-label-secondary);margin-top:4px}",
       ".sp-choice-now b{color:var(--dsw-alias-label-primary);font-weight:600}",
@@ -964,7 +993,7 @@ window.__ModuleLoader__.load({
       ".sp-warn-title{font-size:12px;font-weight:600;color:var(--dsw-alias-state-warning-primary,#C88A2E);margin-bottom:4px}",
       ".sp-warn-body{font-size:11px;line-height:1.55;color:var(--dsw-alias-label-secondary);margin-bottom:6px}",
       ".sp-warn-actions{display:flex;align-items:center;gap:6px}",
-      ".sp-note{margin-top:8px;padding-top:7px;border-top:1px dashed var(--dsw-alias-border-l2);font-size:10.5px;line-height:1.6;color:var(--dsw-alias-label-secondary)}",
+      ".sp-note{margin-top:8px;padding-top:7px;border-top:1px dashed var(--dsw-alias-border-l2);font-size:11.5px;line-height:1.65;color:var(--dsw-alias-label-secondary)}",
       // 本版更新：浮层，不占文档流——点开时压在面板上方，关掉就消失，下面的卡片不会跳动。
       // 遮罩只负责「点外面收起来」，不压暗也不吃滚动，看着还是原来的面板。
       ".sp-news-scrim{position:fixed;inset:0;z-index:59;background:transparent}",
@@ -984,15 +1013,19 @@ window.__ModuleLoader__.load({
       ".sp-news-item.sp-news-first{border-top:0;padding-top:0}",
       ".sp-news-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}",
       ".sp-news-ver{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
-      ".sp-news-date{font-size:10.5px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
+      ".sp-news-date{font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
       ".sp-news-title{margin-top:2px;font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}",
       ".sp-news-list{margin:5px 0 0;padding-left:18px;font-size:12px;line-height:1.7;color:var(--dsw-alias-label-secondary)}",
       ".sp-news-list li{margin-bottom:4px}",
+      ".sp-news-refs{margin-top:8px;padding-top:6px;border-top:1px dashed var(--dsw-alias-border-l2)}",
+      ".sp-news-refs-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-bottom:3px}",
+      ".sp-news-refs-list{margin:0;padding-left:16px;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}",
+      ".sp-news-refs-list li{margin-bottom:2px}",
       ".sp-news-entry{flex:none;font-size:11px;padding:2px 10px}",
       ".sp-news-entry-on{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-state-info-primary,#4C8DF6)}",
       // grid-column:1/-1 是关键：.sp-docrow 是三列网格（标签 / 路径 / 按钮），
       // 少了这行预览会被塞进 76px 的标签列，文字挤成一条竖线。
-      ".sp-doc-trunc{grid-column:1/-1;font-size:10.5px;color:var(--dsw-alias-label-secondary);padding:2px 0 4px}",
+      ".sp-doc-trunc{grid-column:1/-1;font-size:11px;color:var(--dsw-alias-label-secondary);padding:2px 0 4px}",
       ".sp-doc-body{grid-column:1/-1;margin-top:6px;max-height:46vh;overflow:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:10px 12px;background:var(--dsw-alias-bg-layer-2)}",
       ".sp-doc-h1{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);margin:14px 0 6px}",
       ".sp-doc-h1:first-child{margin-top:0}",
@@ -1001,26 +1034,31 @@ window.__ModuleLoader__.load({
       ".sp-doc-ul{margin:0 0 8px;padding-left:18px;font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary)}",
       ".sp-doc-ul li{margin-bottom:3px}",
     ].join("\n");
-    // 五类刀法：小刀 / 中刀 / 大刀 都是本插件动的手（大刀借用官方摘要），
-    // 官方是插件接管前后的原生压缩，旧卡片是我们早期没记刀名的卡。
-    const KNIFE_ORDER = ["small", "merge", "big", "official", "plugin"];
+    // 六类刀法：小刀 / 中刀 / 大刀 是本插件按策略切的；手动 = 用户自己按的 /compact；
+    // 官方 = 宿主自动触发；旧卡片 = 早期没记刀名的卡。
+    // 六类：小刀 / 中刀 / 大刀 是本插件按策略切的；手动 = 用户自己按的 /compact；
+    // 官方 = 宿主自动压缩；旧卡片 = 早期没记刀名的卡。
+    const KNIFE_ORDER = ["small", "merge", "big", "manual", "official", "plugin"];
     const CJK_TEXT = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 
     const KNIFE_COLOR = {
-      small: "#6F9FE8", merge: "#9B7BE8", big: "#E0A35E", official: "#8A8F98", plugin: "#6FBFA8",
+      // 六类各用一种色相：蓝 / 紫 / 琥珀 / 品红 / 灰 / 青。
+      // 一整套同色系深浅靠得近，扫一眼分不出「大刀」和「旧卡片」；色相不同才有层次。
+      small: "#6F9FE8", merge: "#9B7BE8", big: "#E0A35E",
+      manual: "#D869B4", official: "#8A8F98", plugin: "#5FB8A6",
     };
     const KNIFE_LABEL = {
       small: "spine.knifeSmall", merge: "spine.knifeMerge", big: "spine.knifeBig",
-      official: "spine.knifeOfficial", plugin: "spine.knifePlugin",
+      manual: "spine.knifeManual", official: "spine.knifeOfficial", plugin: "spine.knifePlugin",
     };
     /** 时间线徽标只有 70px 宽，用短名；完整名放在悬停提示里。 */
     const KNIFE_SHORT = {
       small: "spine.knifeSmall", merge: "spine.knifeMerge", big: "spine.knifeShortBig",
-      official: "spine.knifeShortOfficial", plugin: "spine.knifeShortPlugin",
+      manual: "spine.knifeManual", official: "spine.knifeShortOfficial", plugin: "spine.knifeShortPlugin",
     };
     /** 自己人：小刀、中刀、大刀、旧卡片；官方不算。 */
     const OURS = ["small", "merge", "big", "plugin"];
-    const EMPTY_KINDS = { small: 0, merge: 0, plugin: 0, big: 0, official: 0 };
+    const EMPTY_KINDS = { small: 0, merge: 0, plugin: 0, big: 0, official: 0, manual: 0 };
     const SEP = String.fromCharCode(92);
     /** 打开中刀时写进 deepCutAbove 的默认门槛：上下文超过 12 万 token 才试。 */
     const MID_ON = 120000;
@@ -1140,6 +1178,20 @@ window.__ModuleLoader__.load({
      * 所以这里省掉年份，但完整时间挂在单元格 title 上；面板别处（KPI、最近一刀、
      * 保存时间、卡片截断时间）仍用 fmtClock 的完整 YYYY-MM-DD HH:mm:ss。
      */
+    /**
+     * KPI 用的短时间：MM-DD HH:mm。
+     * KPI 值那一格只有 ~100px，完整的 YYYY-MM-DD HH:mm:ss 一定被省略号截断
+     * （实际截成「2026-11-27 22:37:…」）。完整时间放到 title 里。
+     */
+    function fmtStamp(ms) {
+      const n = Number(ms) || 0;
+      if (!n) return "—";
+      const d = new Date(n);
+      const two = (v) => String(v).padStart(2, "0");
+      return two(d.getMonth() + 1) + "-" + two(d.getDate())
+        + " " + two(d.getHours()) + ":" + two(d.getMinutes());
+    }
+
     function fmtRowTime(ms) {
       const n = Number(ms) || 0;
       if (!n) return "—";
@@ -1302,11 +1354,13 @@ window.__ModuleLoader__.load({
       // 数字用 19px 好看，纯文字/日期（刀法名、日期）降一档，免得撑出卡片换行。
       const long = value.length > 7;
       const style = {};
-      if (props.color) style.color = props.color;
+      // accent 走主题 token：写死的浅蓝在日间模式（白底）上对比度只有 2.6:1，读不出来。
+      if (props.accent) style.color = "var(--dsw-alias-state-business-primary)";
+      else if (props.color) style.color = props.color;
       if (long) style.fontSize = "15px";
       return h("div", { className: "sp-kpi" },
         h("div", { className: "sp-kpi-label" }, props.label),
-        h("div", { className: "sp-kpi-value", style }, value),
+        h("div", { className: "sp-kpi-value", style, title: props.title || undefined }, value),
         props.hint ? h("div", { className: "sp-kpi-hint" }, props.hint) : null);
     }
 
@@ -1588,6 +1642,22 @@ window.__ModuleLoader__.load({
      */
     const CLIENT_NEWS = [
       {
+        version: "1.4.7",
+        date: "2026-11-27",
+        title: "日间模式看清了，手动单独成类，入口写了用途",
+        bullets: [
+          "日间模式下的小字以前几乎看不见（KPI 提示、旋钮说明、表头），现在都调深、调大了一档。",
+          "「手动压缩」这一类改叫「手动」，并单独占一种颜色，不再和「旧卡片」撞成一个色。",
+          "面板里不再有压缩按钮：压缩请在对话里发 /compact，这个面板只负责统计。",
+          "调试信息、文档与出处各多了一句说明，点进去之前就知道里面有什么。",
+          "「最近一刀」的时间不再被省略号截断，完整时间鼠标停一下就能看到。",
+        ],
+        refs: [
+          { text: "WCAG 2.1 SC 1.4.3 Contrast (Minimum), W3C — 正文对比度下限 4.5:1", url: "https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html" },
+          { text: "DeepSeek Harness 主题变量（label-primary / label-secondary 在两套主题下的取值）", url: "https://github.com/Raysnows/dsh-live-compact-x" },
+        ],
+      },
+      {
         version: "1.4.6",
         date: "2026-11-27",
         title: "刀法归属修正，面板重排，新增手动压缩",
@@ -1770,6 +1840,15 @@ window.__ModuleLoader__.load({
           entry.title ? h("div", { className: "sp-news-title" }, entry.title) : null,
           Array.isArray(entry.bullets) && entry.bullets.length
             ? h("ul", { className: "sp-news-list" }, entry.bullets.slice(0, 5).map((text, i) => h("li", { key: i }, text)))
+            : null,
+          // 参考文献：写清结论从哪来，能点开原文。没有出处就不画这块，不占地方。
+          Array.isArray(entry.refs) && entry.refs.length
+            ? h("div", { className: "sp-news-refs" },
+              h("div", { className: "sp-news-refs-title" }, t("spine.newsRefs")),
+              h("ul", { className: "sp-news-refs-list" }, entry.refs.map((ref, i) => h("li", { key: i },
+                ref.url
+                  ? h("a", { className: "sp-doclink", href: ref.url, target: "_blank", rel: "noreferrer noopener" }, ref.text)
+                  : ref.text))))
             : null))),
         sorted.length > 1
           ? h("button", {
@@ -1913,13 +1992,15 @@ window.__ModuleLoader__.load({
         ? { ...EMPTY_KINDS, ...(state.kinds || {}) }
         : {
           small: derived.byKind.small.cuts, merge: derived.byKind.merge.cuts,
-          big: derived.byKind.big.cuts, plugin: derived.byKind.plugin.cuts, official: derived.byKind.official.cuts,
+          big: derived.byKind.big.cuts, manual: derived.byKind.manual.cuts,
+          plugin: derived.byKind.plugin.cuts, official: derived.byKind.official.cuts,
         };
       const savedBy = hasCounters
         ? { ...EMPTY_KINDS, ...(state.savedBy || {}) }
         : {
           small: derived.byKind.small.saved, merge: derived.byKind.merge.saved,
-          big: derived.byKind.big.saved, plugin: derived.byKind.plugin.saved, official: derived.byKind.official.saved,
+          big: derived.byKind.big.saved, manual: derived.byKind.manual.saved,
+          plugin: derived.byKind.plugin.saved, official: derived.byKind.official.saved,
         };
       const rows = (all ? ["small", "merge", "big"] : KNIFE_ORDER)
         .map((kind) => {
@@ -1950,7 +2031,7 @@ window.__ModuleLoader__.load({
       const attempts = global.attempts || {};
       const kpis = all
         ? [
-          h(Kpi, { key: "saved", label: t("spine.saved"), value: fmtTokens(totalSaved), hint: t("spine.savedHint"), color: "#6F9FE8" }),
+          h(Kpi, { key: "saved", label: t("spine.saved"), value: fmtTokens(totalSaved), hint: t("spine.savedHint"), accent: true }),
           h(Kpi, { key: "count", label: t("spine.count"), value: String(totalCuts), hint: t("spine.average") + " " + fmtTokens(totalCuts ? Math.round(totalSaved / totalCuts) : 0) }),
           h(Kpi, { key: "sessions", label: t("spine.sessions"), value: String(num(global.sessions)), hint: t("spine.sessionsHint") }),
           h(Kpi, { key: "top", label: t("spine.topKnife"), value: topKnife.kind ? t(KNIFE_SHORT[topKnife.kind]) : "—", hint: topKnife.kind ? fmtTokens(topKnife.saved) + " · " + shareText(topKnife.saved, totalSaved) : t("spine.none") }),
@@ -1958,7 +2039,7 @@ window.__ModuleLoader__.load({
           h(Kpi, { key: "since", label: t("spine.since"), value: global.since ? fmtDate(global.since) : "—", hint: t("spine.generated") + " " + fmtClock(global.generatedAt) }),
         ]
         : [
-          h(Kpi, { key: "saved", label: t("spine.saved"), value: fmtTokens(totalSaved), hint: t("spine.savedHint"), color: "#6F9FE8" }),
+          h(Kpi, { key: "saved", label: t("spine.saved"), value: fmtTokens(totalSaved), hint: t("spine.savedHint"), accent: true }),
           h(Kpi, { key: "count", label: t("spine.count"), value: String(totalCuts), hint: t("spine.average") + " " + fmtTokens(totalCuts ? Math.round(totalSaved / totalCuts) : 0) }),
           h(Kpi, {
             key: "mine",
@@ -1974,7 +2055,13 @@ window.__ModuleLoader__.load({
             value: biggestCut ? fmtTokens(biggestCut.tokens) : "—",
             hint: biggestCut ? t(KNIFE_LABEL[kindOfCut(biggestCut)]) : t("spine.none"),
           }),
-          h(Kpi, { key: "last", label: t("spine.last"), value: lastCut ? fmtClock(lastCut.time) : "—", hint: lastCut ? fmtTokens(lastCut.tokens) + " · " + t(KNIFE_LABEL[kindOfCut(lastCut)]) : t("spine.none") }),
+          h(Kpi, {
+            key: "last",
+            label: t("spine.last"),
+            value: lastCut ? fmtStamp(lastCut.time) : "—",
+            title: lastCut ? fmtClock(lastCut.time) : undefined,
+            hint: lastCut ? fmtTokens(lastCut.tokens) + " · " + t(KNIFE_LABEL[kindOfCut(lastCut)]) : t("spine.none"),
+          }),
         ];
       const composition = h("div", { className: "sp-card" },
         h("div", { className: "sp-card-title" }, t("spine.composition"),
@@ -2362,21 +2449,26 @@ window.__ModuleLoader__.load({
         [LABELS.officialAbove[0], Number(settings.officialAbove) > 0 ? fmtKnobValue("officialAbove", Number(settings.officialAbove)) : t("spine.offState")],
         [LABELS.deepCutAbove[0], Number(settings.deepCutAbove) > 0 ? fmtKnobValue("deepCutAbove", Number(settings.deepCutAbove)) : t("spine.offState")],
       ].map(([label, value]) => label + " " + value).join(" · ");
-      const knobsCard = h("div", { className: "sp-card sp-knobs-card" },
+      // 切点整张卡就是入口：点卡片任何地方都进浮窗，不再单独挂一行「调整旋钮」。
+      const knobsCard = h("button", {
+        className: "sp-card sp-knobs-card sp-card-open",
+        "data-sub-open": "knobs",
+        onClick: () => ui && ui.openSub && ui.openSub("knobs"),
+      },
         h("div", { className: "sp-card-title" }, t("spine.cutPoint"),
           h("span", { className: "sp-card-sub" }, cutPointSub)),
         h("div", { className: "sp-strategy", "data-strategy": "1" }, strategyBits),
-        h("details", {
-          className: "sp-details sp-knobs",
-          "data-sub": "knobs",
-          open: Boolean(ui && ui.subView === "knobs"),
-        },
-          h("summary", {
-            className: "sp-knobs-summary",
-            "data-sub-open": "knobs",
-            // 原生 toggle 不受控：点了要先把状态置上，否则「返回」改不到它。
-            onClick: (event) => { event.preventDefault(); ui && ui.openSub && ui.openSub("knobs"); },
-          }, t("spine.openKnobs"), h(Chevron)),
+        h("span", { className: "sp-knobs-open" }, t("spine.openKnobs"), h(Chevron)));
+      const knobsPage = h("details", {
+        className: "sp-details sp-card sp-modal-only",
+        "data-sub": "knobs",
+        open: Boolean(ui && ui.subView === "knobs"),
+      },
+        h("summary", {
+          className: "sp-card-title",
+          onClick: (event) => { event.preventDefault(); ui && ui.openSub && ui.openSub("knobs"); },
+        }, t("spine.openKnobs"), h(Chevron)),
+        h("div", { className: "sp-detail" },
           h("button", {
             className: "sp-btn sp-sub-close",
             "data-sub-close": "1",
@@ -2459,28 +2551,20 @@ window.__ModuleLoader__.load({
       // 左列的空白别浪费：把「调试信息」「文档与出处」做成入口放这儿，
       // 点开都是浮层二级界面，不会把主页面的卡片挤长。
       // 调试 / 文档各成一块，标题本身就是入口（不再套一层「更多信息」）。
-      const entryCard = (sub, labelKey) => h("button", {
-        className: "sp-card sp-entry-card",
+      // tone 只影响左侧那条色带：两块入口各有一个身份色，
+      // 不然两块灰底一模一样的方块，扫一眼分不出哪块是哪块。
+      const entryCard = (sub, labelKey, descKey) => h("button", {
+        className: "sp-entry-mini",
         "data-sub-open": sub,
+        "data-tone": sub,
         onClick: () => ui && ui.openSub && ui.openSub(sub),
       },
-        h("span", { className: "sp-entry-name" }, t(labelKey)),
+        h("span", { className: "sp-entry-bar", "aria-hidden": "true" }),
+        h("span", { className: "sp-entry-text" },
+          h("span", { className: "sp-entry-name" }, t(labelKey)),
+          descKey ? h("span", { className: "sp-entry-desc" }, t(descKey)) : null),
         h(Chevron));
 
-      // 手动压缩：直接发宿主的 /compact，不经过插件私有命令，换后端也接得上。
-      const compactUi = (ui && ui.compact) || {};
-      const compactCard = h("div", { className: "sp-card sp-compact-card" },
-        h("div", { className: "sp-card-title" }, t("spine.compactTitle")),
-        h("button", {
-          className: "sp-entry-card",
-          "data-compact": "run",
-          disabled: Boolean(compactUi.pending),
-          onClick: () => compactUi.run && compactUi.run(),
-        },
-          h("span", { className: "sp-entry-name" }, compactUi.pending ? t("spine.compacting") : t("spine.compactBtn")),
-          h(Chevron)),
-        compactUi.ok ? h("div", { className: "sp-field-hint", "data-compact-ok": "1" }, t("spine.compacted")) : null,
-        compactUi.error ? h("div", { className: "sp-channel sp-channel-bad" }, t("spine.compactFailed") + " " + compactUi.error) : null);
       const docsCard = h("details", {
         className: "sp-details sp-card sp-modal-only",
         "data-sub": "docs",
@@ -2617,9 +2701,9 @@ window.__ModuleLoader__.load({
           h("div", { className: "sp-duo-col" }, statsCard),
           h("div", { className: "sp-duo-col sp-duo-fill" },
             knobsCard,
-            compactCard,
-            entryCard("debug", "spine.debug"),
-            entryCard("docs", "spine.docs"))),
+            h("div", { className: "sp-entry-row" },
+              entryCard("debug", "spine.debug", "spine.debugDesc"),
+              entryCard("docs", "spine.docs", "spine.docsDesc")))),
         timelineCard,
         // 浮层遮罩：点空白处直接收起（和「返回」是同一个出口）。
         ui && ui.subView
@@ -2629,6 +2713,7 @@ window.__ModuleLoader__.load({
             onClick: () => ui && ui.closeSub && ui.closeSub(),
           })
           : null,
+        knobsPage,
         docsCard,
         debugCard);
     }
@@ -2673,8 +2758,6 @@ window.__ModuleLoader__.load({
         document.addEventListener("keydown", onKey);
         return () => document.removeEventListener("keydown", onKey);
       }, [subView]);
-      // 手动压缩：按钮点了立刻置灰，结果只写一行（成功「已提交」/ 失败给原因）。
-      const [compactAsk, setCompactAsk] = React.useState({ pending: false, ok: false, error: "" });
       // 自定义档：新建表单（＋）、名字、范围，以及「再点一次删除」的待确认 id。
       const [presetForm, setPresetForm] = React.useState(false);
       const [presetName, setPresetName] = React.useState("");
@@ -2712,20 +2795,6 @@ window.__ModuleLoader__.load({
           subView,
           openSub: (name) => setSubView(name),
           closeSub: () => setSubView(null),
-          compact: {
-            ...compactAsk,
-            run: () => {
-              if (compactAsk.pending) return;
-              setCompactAsk({ pending: true, ok: false, error: "" });
-              const target = panelSid;
-              Promise.resolve(typeof props.runCompact === "function" ? props.runCompact(target) : { ok: false, missing: true })
-                .then((result) => {
-                  if (result && result.ok) { setCompactAsk({ pending: false, ok: true, error: "" }); return; }
-                  setCompactAsk({ pending: false, ok: false, error: (result && (result.message || (result.missing ? "" : ""))) || "" });
-                })
-                .catch((error) => setCompactAsk({ pending: false, ok: false, error: String(error && error.message ? error.message : error) }));
-            },
-          },
           // 更新日志的状态必须放在 ui 里：面板读的是 ui.newsOpen / ui.toggleNews。
           // 之前放进第 6 个参数（mid），于是 open 恒为 false、按钮点了没反应。
           newsOpen,
@@ -2817,29 +2886,6 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         // 面板要靠宿主打开本机文档：把上下文留给渲染期用（服务取不到也不影响加载）。
         setBridgeCtx(ctx);
-        /**
-         * 「手动压缩」按钮：给当前会话发宿主的 /compact。
-         * sessions 不进 inject（只有这颗按钮要它，为它等服务会拖住整个 client），按需取；
-         * 取不到就回一个明确的失败，按钮不会卡住。
-         */
-        const runCompact = (sessionId) => {
-          try {
-            const sessions = ctx.sessions ?? (typeof ctx.get === "function" ? ctx.get("sessions") : null);
-            const binding = sessions?.binding?.(sessionId);
-            if (!binding) return Promise.resolve({ ok: false, missing: true });
-            return Promise.resolve(binding.session.command("/compact")).then((result) => {
-              if (result === null || typeof result !== "object") return { ok: false, message: String(result) };
-              if (!result.ok) {
-                const failure = result.error;
-                const message = failure && typeof failure === "object" && typeof failure.message === "string" ? failure.message : String(failure);
-                return { ok: false, message };
-              }
-              return { ok: true, matched: !(result.value && result.value.matched === false) };
-            }).catch((error) => ({ ok: false, message: String(error?.message ?? error) }));
-          } catch (error) {
-            return Promise.resolve({ ok: false, message: String(error?.message ?? error) });
-          }
-        };
         const t = ctx.locale.bind("liveCompact");
         ctx.effect(() => ctx.locale.register("liveCompact", { zh, en }), "live-compact: settings dictionary");
         const fields = [PRESET_FIELD, ...KEYS.map(settingsNumberField)];
@@ -2949,7 +2995,7 @@ window.__ModuleLoader__.load({
                 locale: "liveCompact",
                 label: () => t("tab.spine"),
               },
-              (props) => h(SpinePanel, { ...props, t, model, actions: panelActions, runCompact }),
+              (props) => h(SpinePanel, { ...props, t, model, actions: panelActions }),
             ));
           } catch (error) {
             ctx.logger?.debug?.("spine: cuts panel registration skipped: " + String(error?.message ?? error));
@@ -2959,7 +3005,7 @@ window.__ModuleLoader__.load({
       // 只是给本地测试用的出口；加载器只认 inject / apply。
       __test: {
         summarizeCuts, barSegments, kindBars, kindOfCut, shareText, readProjection,
-        fmtTokens, fmtClock, fmtRowTime, renderPanel, SpinePanel, SPINE_CSS,
+        fmtTokens, fmtClock, fmtRowTime, fmtStamp, renderPanel, SpinePanel, SPINE_CSS,
         KNIFE_COLOR, KNOB_GROUPS, MID_ON, PRESETS, KNOB_META, knobRange, fmtKnobValue, MidSwitch,
         shortPath, DocRow, openHostPath, setBridgeCtx, createSettingsStore, postBridge,
         cutBars, CutRow, Chevron,

@@ -151,6 +151,10 @@ export function attributeCuts(cuts, firstActivity, context = {}) {
   const handovers = Array.isArray(context?.handovers) ? [...context.handovers].sort((a, b) => a - b) : [];
   const claimed = new Set();
   return (Array.isArray(cuts) ? cuts : []).map((cut) => {
+    // 手动 /compact：用户自己按的，既不是我们的刀，也不是宿主自动压缩——单列一类。
+    if (cut?.kind === "official" && String(cut?.sourceCommandId || "").length > 0) {
+      return { ...cut, kind: "manual" };
+    }
     if (cut?.kind !== "official") return { ...cut };
     const at = Number(cut?.time) || 0;
     const mine = String(cut?.sourceCommandId || "").length === 0
@@ -180,11 +184,12 @@ export function countCuts(state, cuts) {
     savedBy[kind] += Number(cut.tokens) || 0;
   }
   const rawOfficial = Number(state?.kinds?.official) || 0;
-  const seen = kinds.big + kinds.official;
+  // 40 刀上限之外的历史：state 里的 official 计数包含大刀 / 手动，这里只补差额。
+  const seen = kinds.big + kinds.official + kinds.manual;
   if (rawOfficial > seen) {
     kinds.official += rawOfficial - seen;
     const rawSaved = Number(state?.savedBy?.official) || 0;
-    const seenSaved = savedBy.big + savedBy.official;
+    const seenSaved = savedBy.big + savedBy.official + savedBy.manual;
     if (rawSaved > seenSaved) savedBy.official += rawSaved - seenSaved;
   }
   return { kinds, savedBy };
@@ -263,7 +268,7 @@ export function schemaFor(zod) {
 }
 
 const EMPTY_COUNTERS = { small: 0, merge: 0, plugin: 0, official: 0 };
-const EMPTY_VIEW_COUNTERS = { small: 0, merge: 0, plugin: 0, big: 0, official: 0 };
+const EMPTY_VIEW_COUNTERS = { small: 0, merge: 0, plugin: 0, big: 0, official: 0, manual: 0 };
 const EMPTY_KNIFE = () => ({ cuts: 0, tokens: 0, saved: 0 });
 const EMPTY_GLOBAL = () => ({
   generatedAt: 0,

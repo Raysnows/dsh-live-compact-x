@@ -210,7 +210,7 @@ console.log("16. 官方卡归谁：只有被 official-handover 认领的才算�
     "officialAbove=0：即使有 handover 记录也算官方");
   // 命令触发优先于一切
   const manual = { kind: "official", time: cardTime, tokens: 508657, sourceCommandId: "cmd-594e58c7-1" };
-  ok(attributeCuts([manual], first, ctx())[0].kind === "official", "手动 /compact 带 sourceCommandId：算官方");
+  ok(attributeCuts([manual], first, ctx())[0].kind === "manual", "手动 /compact 带 sourceCommandId：单独算「手动压缩」");
   // 时差超过窗口：认不了
   ok(attributeCuts([{ kind: "official", time: cardTime - 400_000, tokens: 1000 }], first, ctx())[0].kind === "official",
     "卡片比 handover 早超过 300 秒：不算大刀");
@@ -279,7 +279,7 @@ console.log("16b. 卡片上的 sourceCommandId 进到 cuts，供归因使用");
   });
   ok(s.cuts.length === 1, "卡片落到 cuts");
   ok(s.cuts[0].sourceCommandId === "cmd-594e58c7-1", "sourceCommandId 被保留：" + s.cuts[0].sourceCommandId);
-  ok(attributeCuts(s.cuts, 1)[0].kind === "official", "该卡片归因为官方而不是大刀");
+  ok(attributeCuts(s.cuts, 1)[0].kind === "manual", "该卡片归因为「手动压缩」，既不是大刀也不是官方");
 }
 
 console.log("17. 视图里带着首次活动时间与大刀认领表");
