@@ -98,22 +98,33 @@ function previewOf(content) {
 
 /**
  * 官方压缩的卡到底是谁发起的：
- * 本插件接管之后，官方摘要只有我们请它才会跑（`official-handover`），所以卡片时间
- * 落在「这条会话第一次被本插件碰到」之后，就算我们的大刀；更早的是插件接管以前的
- * 历史压缩，仍记官方。
+ * 本插件接管之后，自动的官方摘要只有我们请它才会跑（`official-handover`），所以卡片
+ * 时间落在「这条会话第一次被本插件碰到」之后，就算我们的大刀；更早的是插件接管以前
+ * 的历史压缩，仍记官方。
+ *
+ * 但宿主的 `/compact` 命令（`dsh-command-compact`）并不经过 `official-handover`：
+ * 它直接调 `compactNow()`，同样产出 `compact-checkpoint`。这种卡片带
+ * `source.sourceCommandId`（命令调用 id）。不把它排除，用户手动压一次就会被面板
+ * 记成一次大刀，`officialAbove` 关着也一样，调参会失去依据。
+ *
  * @param {number} time 卡片时间（ms）
  * @param {number} firstActivity 这条会话第一次被本插件碰到的毫秒数
+ * @param {string} [sourceCommandId] 卡片的 `source.sourceCommandId`；非空 = 命令触发
  */
-export function isOursOfficial(time, firstActivity) {
+export function isOursOfficial(time, firstActivity, sourceCommandId = "") {
   const at = Number(time) || 0;
   const first = Number(firstActivity) || 0;
+  // 命令触发（手动 /compact）不是我们请的官方压缩，永远是官方。
+  if (String(sourceCommandId || "").length > 0) return false;
   return first > 0 && at >= first;
 }
 
 /** 把原始 cuts 归成五类：小刀 / 中刀 / 大刀 / 官方 / 旧卡片。 */
 export function attributeCuts(cuts, firstActivity) {
   return (Array.isArray(cuts) ? cuts : []).map((cut) => {
-    if (cut?.kind === "official" && isOursOfficial(cut.time, firstActivity)) return { ...cut, kind: "big" };
+    if (cut?.kind === "official" && isOursOfficial(cut.time, firstActivity, cut?.sourceCommandId)) {
+      return { ...cut, kind: "big" };
+    }
     return { ...cut };
   });
 }
@@ -160,6 +171,8 @@ export function schemaFor(zod) {
     provider: zod.string(),
     model: zod.string(),
     preview: zod.string(),
+    // 旧快照没有这一项，必须可选，否则升级会把历史会话挡在门外。
+    sourceCommandId: zod.string().optional(),
     rawNames: zod.array(zod.string()),
   });
   // 老快照缺字段也算合法：升级时宁可少显示，也别把历史会话挡在门外。
@@ -257,7 +270,8 @@ export function spineProjectionDefinition({
     key: SPINE_PROJECTION_KEY,
     stateSchema: schema.state,
     viewSchema: schema.view,
-    stateVersion: 1,
+    // 2：1.4.1 起 cuts 多了 sourceCommandId（手动 /compact 归因）；版本不符时宿主会整段重放。
+    stateVersion: 2,
     init(header) {
       const sid = String(header?.id ?? header?.sessionId ?? "");
       let dir = "";
@@ -308,6 +322,8 @@ export function spineProjectionDefinition({
         provider: String(info.provider ?? ""),
         model: String(info.model ?? ""),
         preview: previewOf(data?.content),
+        // 命令触发的官方压缩（手动 /compact）靠它和「我们请的」区分开。
+        sourceCommandId: String(source?.sourceCommandId ?? ""),
         rawNames: Array.isArray(source?.rawNames) ? source.rawNames.map((name) => String(name)) : [],
       };
       const cuts = [...(state.cuts || []), cut].slice(-MAX_CUTS);

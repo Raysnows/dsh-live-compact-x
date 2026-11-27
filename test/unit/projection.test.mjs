@@ -205,6 +205,11 @@ console.log("16. 官方压缩归谁：接管之后算大刀，之前算官方");
   ok(isOursOfficial(first, first) && !isOursOfficial(first - 1, first), "边界：正好等于首次活动算我们的，早一毫秒就不算");
   ok(!isOursOfficial(first, 0), "没有首次活动时间时不瞎认");
   ok(attributeCuts([before, after], 0)[1].kind === "official", "日志缺失时保守算官方");
+  // 手动 /compact：卡片带 sourceCommandId，即使落在接管之后也仍是官方，不是大刀
+  const manual = { kind: "official", time: first + 90_000, tokens: 508657, sourceCommandId: "cmd-594e58c7-1" };
+  ok(attributeCuts([manual], first)[0].kind === "official", "手动 /compact 带 sourceCommandId：仍算官方");
+  ok(!isOursOfficial(first + 90_000, first, "cmd-1"), "命令发起的官方压缩不算大刀");
+  ok(isOursOfficial(first + 90_000, first, ""), "没有命令 id 的官方压缩仍按时间判");
   const counted = countCuts({ kinds: { official: 2 }, savedBy: { official: 405000 } }, list);
   ok(counted.kinds.big === 1 && counted.kinds.official === 1, "计数按归属分开");
   ok(counted.savedBy.big === 400000 && counted.savedBy.official === 5000, "切掉量也跟着分");
@@ -212,6 +217,26 @@ console.log("16. 官方压缩归谁：接管之后算大刀，之前算官方");
   const capped = countCuts({ kinds: { official: 5 }, savedBy: { official: 900000 } }, attributeCuts([after, ours], first));
   ok(capped.kinds.big === 1 && capped.kinds.official === 4, "上限之外的历史记成官方（" + capped.kinds.official + "）");
   ok(capped.savedBy.official === 500000, "切掉量补回：" + capped.savedBy.official);
+}
+
+console.log("16b. 卡片上的 sourceCommandId 进到 cuts，供归因使用");
+{
+  const d = spineProjectionDefinition({});
+  let s = d.init({ id: "s16b" }, 0);
+  s = d.apply(s, {
+    type: "compaction/summary", seq: 1, time: 1000,
+    data: { compactionId: "m1", shadowedRange: { start: 1, end: 2 }, shadowedTokenCount: 509000 },
+  });
+  s = d.apply(s, {
+    type: "user/message", seq: 2, time: 1000,
+    data: {
+      source: { kind: "compact-checkpoint", compactionId: "m1", sourceCommandId: "cmd-594e58c7-1" },
+      content: [{ type: "text", text: "summary" }],
+    },
+  });
+  ok(s.cuts.length === 1, "卡片落到 cuts");
+  ok(s.cuts[0].sourceCommandId === "cmd-594e58c7-1", "sourceCommandId 被保留：" + s.cuts[0].sourceCommandId);
+  ok(attributeCuts(s.cuts, 1)[0].kind === "official", "该卡片归因为官方而不是大刀");
 }
 
 console.log("17. 视图里带着每条会话的首次活动时间");
