@@ -1,6 +1,7 @@
 /** 浏览器半边：在假加载器里跑起来，验统计、验面板渲染、验注册。 */
 let pass = 0, fail = 0;
 const ok = (c, n, x = "") => { if (c) { pass++; console.log("  ok  " + n); } else { fail++; console.log("  FAIL  " + n + " " + x); } };
+const isSecondaryCard = (n) => n && n.type === "details" && String(n.props?.className || "").split(/\s+/).includes("sp-details") && String(n.props?.className || "").split(/\s+/).includes("sp-card");
 
 const inserted = [];
 let captured = null;
@@ -188,7 +189,7 @@ walk(tree, (entry) => {
   if (n.props?.className === "sp-row") rows += 1;
   if (typeof n.type === "function" && n.type.name === "KnobInput") { knobs += 1; knobTitles.push(n.props.label); }
   if (n.props?.className === "sp-btn sp-btn-primary") saveBtn = n;
-  if (n.type === "details" && n.props?.className === "sp-details sp-card") debug = n;
+  if (isSecondaryCard(n) && String(n.props?.className || "").includes("sp-modal-only") && !String(n.props?.className || "").includes("docs")) debug = n;
   if (n.props?.className === "sp-badge") badges.add(n.props?.style?.color);
 });
 ok(rows === 6, "时间线六行（" + rows + "）");
@@ -249,7 +250,7 @@ const sections = [];
 walk(tree, (entry) => {
   const n = entry.node;
   if (!n) return;
-  if (n.type === "details" && n.props?.className === "sp-details sp-card") {
+  if (isSecondaryCard(n)) {
     const head = (n.children || [])[0];
     const label = [];
     if (head) walk(head, (x) => { if (x.kind === "text") label.push(x.value); });
@@ -789,7 +790,7 @@ console.log("9g. 调试信息不再糊原始 JSON");
   let dbgCard = null;
   walk(tree, (entry) => {
     const n = entry.node;
-    if (!n || n.type !== "details" || n.props?.className !== "sp-details sp-card") return;
+    if (!isSecondaryCard(n)) return;
     const head = (n.children || [])[0];
     const label = [];
     if (head) walk(head, (x) => { if (x.kind === "text") label.push(x.value); });

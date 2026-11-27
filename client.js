@@ -826,6 +826,8 @@ window.__ModuleLoader__.load({
       ".sp-details[data-sub][open]{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:82;width:min(860px,calc(100vw - 40px));max-height:min(82vh,820px);overflow:auto;margin:0;padding:12px 14px 14px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.34)}",
       ".sp-sub-close{display:inline-flex;align-items:center;gap:6px;margin:2px 0 8px}",
       ".sp-sub-scrim{position:fixed;inset:0;z-index:81;background:rgba(0,0,0,.32)}",
+      // 二级界面专用的 details：收起时整块不占位（入口在右列卡片里，底部不再重复一条标题）。
+      ".sp-modal-only:not([open]){display:none}",
       ".sp-entries{display:grid;gap:6px}",
       ".sp-entry{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:6px 9px}",
       ".sp-entry-name{font-size:12px;color:var(--dsw-alias-label-primary)}",
@@ -1586,7 +1588,7 @@ window.__ModuleLoader__.load({
      */
     const CLIENT_NEWS = [
       {
-        version: "4.6.0",
+        version: "1.4.6",
         date: "2026-11-27",
         title: "刀法归属修正，面板重排，新增手动压缩",
         bullets: [
@@ -2480,7 +2482,7 @@ window.__ModuleLoader__.load({
         compactUi.ok ? h("div", { className: "sp-field-hint", "data-compact-ok": "1" }, t("spine.compacted")) : null,
         compactUi.error ? h("div", { className: "sp-channel sp-channel-bad" }, t("spine.compactFailed") + " " + compactUi.error) : null);
       const docsCard = h("details", {
-        className: "sp-details sp-card",
+        className: "sp-details sp-card sp-modal-only",
         "data-sub": "docs",
         open: Boolean(ui && ui.subView === "docs"),
         onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
@@ -2512,7 +2514,7 @@ window.__ModuleLoader__.load({
           h(DocRow, { t, label: t("spine.docsIssues"), value: docs.issues, href: docs.issues }),
           h(DocRow, { t, label: t("spine.version"), value: docs.version })));
       const debugCard = h("details", {
-        className: "sp-details sp-card",
+        className: "sp-details sp-card sp-modal-only",
         "data-sub": "debug",
         open: Boolean(ui && ui.subView === "debug"),
         onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
