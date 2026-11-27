@@ -323,6 +323,88 @@ ok(uniqueSections.filter((sec) => sec === "spine.cutPoint").length === 1, "切�
   ok(Boolean(back), "二级界面里有「返回」按钮");
   back.props.onClick();
   ok(closed === 1, "点返回会收起二级界面（回到一屏）");
+
+  // 点空白处也要能收起：有遮罩，且遮罩点击 = closeSub
+  let scrim = null;
+  walk(closable, ({ kind, node }) => {
+    if (kind === "node" && node.props && String(node.props.className || "").split(/\s+/).includes("sp-sub-scrim")) scrim = node;
+  });
+  ok(Boolean(scrim), "打开二级界面时有遮罩层");
+  let scrimClosed = 0;
+  const withScrim = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, { ...uiBase, subView: "docs", closeSub: () => { scrimClosed += 1; } });
+  let scrim2 = null;
+  walk(withScrim, ({ kind, node }) => {
+    if (kind === "node" && node.props && String(node.props.className || "").split(/\s+/).includes("sp-sub-scrim")) scrim2 = node;
+  });
+  scrim2.props.onClick();
+  ok(scrimClosed === 1, "点空白处（遮罩）会收起浮层");
+  ok(String(T.SPINE_CSS).includes(".sp-sub-scrim{position:fixed;inset:0;z-index:81"), "遮罩铺满视口，压在浮层下面");
+
+  // 摘要行自己接管点击：原生 toggle 不会被用上（否则「返回」改不动它）
+  let summary = null;
+  walk(T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, { ...uiBase, subView: null }), ({ kind, node }) => {
+    if (kind === "node" && node.type === "summary" && node.props && node.props["data-sub-open"] === "knobs") summary = node;
+  });
+  ok(Boolean(summary) && typeof summary.props.onClick === "function", "切点摘要是受控入口");
+  let opened2 = 0;
+  const controlled = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, { ...uiBase, subView: null, openSub: () => { opened2 += 1; } });
+  let summary2 = null;
+  walk(controlled, ({ kind, node }) => {
+    if (kind === "node" && node.type === "summary" && node.props && node.props["data-sub-open"] === "knobs") summary2 = node;
+  });
+  let prevented = false;
+  summary2.props.onClick({ preventDefault: () => { prevented = true; } });
+  ok(prevented && opened2 === 1, "点摘要会置状态（并阻止原生 toggle）");
+}
+// 手动压缩：右列独立一块，点按钮发 /compact；结果只写一行。
+{
+  const props = { t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() };
+  let ran = 0;
+  const treeCompact = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, {
+    compact: { pending: false, ok: false, error: "", run: () => { ran += 1; } },
+  });
+  let btn = null;
+  walk(treeCompact, ({ kind, node }) => {
+    if (kind === "node" && node.type === "button" && node.props && node.props["data-compact"] === "run") btn = node;
+  });
+  ok(Boolean(btn), "有「手动压缩」按钮");
+  btn.props.onClick();
+  ok(ran === 1, "点一下会去发 /compact");
+  const textsCompact = [];
+  walk(treeCompact, ({ kind, value }) => { if (kind === "text") textsCompact.push(value); });
+  ok(!textsCompact.includes("spine.moreInfo"), "不再有「更多信息」这块标题");
+
+  const pendingTree = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, {
+    compact: { pending: true, ok: false, error: "", run: () => {} },
+  });
+  let pendingBtn = null;
+  walk(pendingTree, ({ kind, node }) => {
+    if (kind === "node" && node.type === "button" && node.props && node.props["data-compact"] === "run") pendingBtn = node;
+  });
+  ok(pendingBtn.props.disabled === true, "压缩中按钮置灰，防连点");
+
+  const doneTree = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, {
+    compact: { pending: false, ok: true, error: "", run: () => {} },
+  });
+  const doneTexts = [];
+  walk(doneTree, ({ kind, value }) => { if (kind === "text") doneTexts.push(value); });
+  ok(doneTexts.includes("spine.compacted"), "成功只写一行「已提交」");
+
+  // 右列四块：切点 / 手动压缩 / 调试 / 文档，顺序固定
+  const fill = [];
+  walk(treeCompact, ({ kind, node }) => {
+    if (kind !== "node" || !node.props) return;
+    if (String(node.props.className || "").split(/\s+/).includes("sp-duo-fill")) fill.push(node);
+  });
+  ok(fill.length === 1, "右列是单独一列（" + fill.length + "）");
+  const kids = (fill[0].children || []).map((child) => {
+    if (!child || !child.props) return "";
+    if (child.props["data-sub-open"]) return child.props["data-sub-open"];
+    if (child.props.className && String(child.props.className).includes("sp-knobs-card")) return "knobs";
+    const inner = (child.children || []).find((c) => c && c.props && c.props["data-compact"] === "run");
+    return inner ? "compact" : "";
+  });
+  ok(kids.filter(Boolean).join(",") === "knobs,compact,debug,docs", "右列顺序：切点 → 手动压缩 → 调试 → 文档（" + kids.join(",") + "）");
 }
 // 信息密度：卡片内边距与 KPI 间距都收紧过，值写死——改样式时这里会提醒。
 ok(String(T.SPINE_CSS).includes("padding:8px 10px"), "卡片内边距收紧到 8px/10px");

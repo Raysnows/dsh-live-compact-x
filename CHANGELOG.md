@@ -1,11 +1,36 @@
-# 未发布（刀法归属：官方压缩不再被误记为大刀）
+# 4.6.0（2026-11-27 刀法归属修正 + 面板重排 + 手动压缩）
 
-> 两处误判，同一个根因：面板只拿「卡片时间」猜来源，而官方卡在日志里没有任何来源标记。
+> 一次从 1.4.0 跨到 4.6.0：这版同时改了归因逻辑、面板布局、二级界面和手动压缩，按改动量把版本号放大。
 
-- **手动 `/compact` 不再被记成大刀**：宿主 `dsh-command-compact` 直接调 `compactNow()`，不经过 `official-handover`，同样产出 `compact-checkpoint`。现在卡片带 `source.sourceCommandId`（命令调用 id）就一律算官方。
-- **宿主自己触发的官方压缩也不再被记成大刀**：压力/溢出触发的压缩直接落进 `super.compactIfNeeded`，卡片上什么标记都没有，旧判据（时间晚于本会话首次活动）会把它算成大刀；`officialAbove` 关着时也会凭空出现大刀。现在改用决策日志里的 `official-handover` 时间点认领：卡片时间早于记录、且差距在 300 秒内（官方摘要最坏跑满 180 秒超时）才算大刀，一条记录只认领一张卡。`officialAbove=0` 时直接判官方——大刀开关关着，插件这一路根本不会跑。
-- **`stateVersion` 1 → 2**：投影有持久化缓存（每会话一条带 `ver` 的记录），旧快照里的 `cuts[]` 没有 `sourceCommandId`，宿主会继续沿用旧数据。升版本号让宿主从 seq 0 整段重放，历史统计自动纠正，不需要手工清缓存。
-- `npm test` 992 → **1009 条断言，BAD = 0**，新增覆盖：宿主自触发官方卡（复刻真实会话 session-bd34b3a5 的两张卡）、`officialAbove=0` 兜底、handover 时间窗与「一条记录只认一张卡」、`officialHandoversOf` 的归一与排序。
+## 刀法归属（作者 @shskyc，PR #3）
+
+- **手动 `/compact` 不再被记成大刀**：宿主 `dsh-command-compact` 直接调 `compactNow()`，不经过 `official-handover`，卡片却和自动压缩长得一样。现在卡片带 `source.sourceCommandId` 就一律算官方。
+- **宿主自己触发的官方压缩也不再被记成大刀**：压力/溢出触发的压缩没有任何来源标记，旧的「时间晚于首次活动」判据会把它算成大刀。现在改用决策日志里的 `official-handover` 时间点**认领**：卡片时间早于记录、差距在 300 秒内（摘要最坏跑满 180 秒超时）才算大刀，一条记录只认领一张卡；`officialAbove=0` 时直接判官方。
+- **`stateVersion` 1 → 2**：投影有持久化缓存，旧快照里的 `cuts[]` 没有新字段。升版本让宿主从 seq 0 整段重放，历史统计自动纠正，不用手工清缓存。
+
+## 面板
+
+- **第一屏重排**：左边**刀法统计**，右边**切点 / 手动压缩 / 调试信息 / 文档与出处**四块；右列下面三块均分高度，底边和左列对齐，不再是一大块空白。
+- **切点、文档、调试全部改成浮层二级界面**：点空白处、按 Esc、或点「返回」都能收；关掉后页面高度不变，不会把下面的卡片顶下去。
+- **新增「手动压缩」**：直接给当前会话发宿主的 `/compact`（不写草稿、不用插件私有命令），换压缩后端也接得上；成功只写一行「已提交 /compact」，失败给原因。
+- **去掉重复入口与写给自己看的文字**：「调整旋钮」只留一个（摘要行本身），「点开是浮层，不占页面」「默认收起」「展开后改值、保存」这类实现说明全部删掉，入口只写动作名。
+
+## 之前几版已发布、这次一起进来的内容
+
+- 本地脚本可选版本（新版默认 / 稳定版），小刀、中刀、大刀共用；中刀组默认收起；中刀与大刀启用线互相咬住；反馈诊断带上全部切割参数与刀法统计。
+
+## 测试
+
+- 全套 **1035 条断言，BAD = 0**；新增覆盖：宿主自触发官方卡、handover 时间窗与「一条记录只认一张卡」、浮层入口/遮罩/返回/Esc、手动压缩按钮与右列顺序。
+
+**参考文献**
+
+- Gaia Research, *The Context Compaction Curve* — 缓存命中 / 未命中的价格倍数与冷启动成本：https://research.gaiaskilltree.com/blog/context-compaction-curve
+- formalRAG, *Context Selection: Submodular Coverage, MMR, and Determinantal Point Processes* — 次模覆盖与贪心近似：https://www.formalrag.com/topics/context-selection-submodular-dpp/
+- Carbonell & Goldstein (1998), *The Use of MMR, Diversity-Based Reranking for Reordering Documents* — 去重公式（MMR）
+- Nemhauser, Wolsey & Fisher (1978), *An analysis of approximations for maximizing submodular set functions* — 贪心的 (1−1/e) 保证
+- Synthorai, *Context Compaction Cost: Measuring the Turns to Payback* — 回本的实测口径：https://synthorai.io/blog/context-compaction-cost/
+- Jiang et al. (2023), *LLMLingua: Compressing Prompts for Accelerated Inference* (arXiv:2310.05736) — 预算内的信息取舍：https://arxiv.org/abs/2310.05736
 
 # 1.4.0（2026-11-26 本地脚本可选版本 + 中刀并入刀的队列 + 反馈能带参数）
 

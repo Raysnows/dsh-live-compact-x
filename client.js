@@ -493,6 +493,11 @@ window.__ModuleLoader__.load({
       "spine.scriptModelHint": "用你当前正在用的模型把整段归纳成摘要（不是 DeepSeek 官方账号的模型）：更连贯、更会取舍，但会多发一次模型请求，有 LLM 成本。",
       "spine.cutPointAdjust": "调整旋钮（展开后改值、保存）",
       "spine.openKnobs": "调整旋钮",
+      "spine.compactTitle": "手动压缩",
+      "spine.compactBtn": "压缩这条会话",
+      "spine.compacting": "正在压缩…",
+      "spine.compacted": "已提交 /compact",
+      "spine.compactFailed": "压缩失败：",
       "spine.subBack": "返回",
       "spine.moreInfo": "更多信息",
       "spine.diagTitle": "提交问题日志",
@@ -698,6 +703,11 @@ window.__ModuleLoader__.load({
       "spine.scriptModelHint": "The model you are currently using writes the summary — not a DeepSeek official-account model. It is more coherent and selective, but makes one extra LLM request.",
       "spine.cutPointAdjust": "Adjust knobs (expand to edit and save)",
       "spine.openKnobs": "Adjust knobs",
+      "spine.compactTitle": "Compact now",
+      "spine.compactBtn": "Compact this session",
+      "spine.compacting": "Compacting…",
+      "spine.compacted": "Submitted /compact",
+      "spine.compactFailed": "Compaction failed: ",
       "spine.subBack": "Back",
       "spine.moreInfo": "More",
       "spine.diagTitle": "Report a problem",
@@ -803,13 +813,19 @@ window.__ModuleLoader__.load({
       ".sp-kpi-hint{font-size:10.5px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-secondary));margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".sp-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:8px 10px;margin-bottom:8px}",
       // 两块并排：右边那块以前整行空着，把「刀法统计」和「切点」放一起，打开就都看到。
-      ".sp-duo{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr);gap:8px;margin-bottom:8px;align-items:start}",
+      ".sp-duo{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr);gap:8px;margin-bottom:8px;align-items:stretch}",
       ".sp-duo>.sp-card{margin-bottom:0}",
-      ".sp-duo-col{display:grid;gap:8px;align-content:start;min-width:0}",
+      ".sp-duo-col{display:grid;gap:8px;align-content:stretch;min-width:0}",
+      // 右列：切点自然高度，下面三块（手动压缩 / 调试 / 文档）平分剩余高度，底边和左列对齐。
+      ".sp-duo-col.sp-duo-fill{grid-template-rows:auto 1fr 1fr 1fr}",
+      ".sp-entry-card{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;font:inherit;color:var(--dsw-alias-label-primary);text-align:left;cursor:pointer;margin-bottom:0;padding:10px 12px}",
+      ".sp-entry-card:hover{background:var(--dsw-alias-interactive-bg-hover)}",
+      ".sp-entry-card:disabled{opacity:.55;cursor:default}",
       ".sp-duo-col>.sp-card{margin-bottom:0}",
       // 二级界面：切点 / 文档 / 调试打开时脱离文档流、浮在面板上方，不再把主页面撑长。
       ".sp-details[data-sub][open]{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:82;width:min(860px,calc(100vw - 40px));max-height:min(82vh,820px);overflow:auto;margin:0;padding:12px 14px 14px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.34)}",
       ".sp-sub-close{display:inline-flex;align-items:center;gap:6px;margin:2px 0 8px}",
+      ".sp-sub-scrim{position:fixed;inset:0;z-index:81;background:rgba(0,0,0,.32)}",
       ".sp-entries{display:grid;gap:6px}",
       ".sp-entry{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:6px 9px}",
       ".sp-entry-name{font-size:12px;color:var(--dsw-alias-label-primary)}",
@@ -1569,6 +1585,18 @@ window.__ModuleLoader__.load({
      * 写法要求：一句一件、说人话、不带 markdown 标记——这里是给人看的，不是给人翻的。
      */
     const CLIENT_NEWS = [
+      {
+        version: "4.6.0",
+        date: "2026-11-27",
+        title: "刀法归属修正，面板重排，新增手动压缩",
+        bullets: [
+          "刀法归属修好了：手动 /compact 和宿主自己触发的压缩不再被记成大刀。",
+          "面板重排：左边刀法统计，右边切点、手动压缩、调试、文档四块，底边对齐。",
+          "切点、文档、调试改成浮层二级界面：点空白、按 Esc 或点返回都能收，关掉页面不抖动。",
+          "新增「手动压缩」按钮，直接发宿主自带的 /compact。",
+          "去掉重复的「调整旋钮」按钮，也删掉了写给自己看的说明文字。",
+        ],
+      },
       {
         version: "1.4.0",
         date: "2026-11-26",
@@ -2340,11 +2368,12 @@ window.__ModuleLoader__.load({
           className: "sp-details sp-knobs",
           "data-sub": "knobs",
           open: Boolean(ui && ui.subView === "knobs"),
-          onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
         },
           h("summary", {
             className: "sp-knobs-summary",
             "data-sub-open": "knobs",
+            // 原生 toggle 不受控：点了要先把状态置上，否则「返回」改不到它。
+            onClick: (event) => { event.preventDefault(); ui && ui.openSub && ui.openSub("knobs"); },
           }, t("spine.openKnobs"), h(Chevron)),
           h("button", {
             className: "sp-btn sp-sub-close",
@@ -2427,29 +2456,39 @@ window.__ModuleLoader__.load({
         })));
       // 左列的空白别浪费：把「调试信息」「文档与出处」做成入口放这儿，
       // 点开都是浮层二级界面，不会把主页面的卡片挤长。
-      const entriesCard = h("div", { className: "sp-card sp-entries-card" },
-        h("div", { className: "sp-card-title" }, t("spine.moreInfo")),
+      // 调试 / 文档各成一块，标题本身就是入口（不再套一层「更多信息」）。
+      const entryCard = (sub, labelKey) => h("button", {
+        className: "sp-card sp-entry-card",
+        "data-sub-open": sub,
+        onClick: () => ui && ui.openSub && ui.openSub(sub),
+      },
+        h("span", { className: "sp-entry-name" }, t(labelKey)),
+        h(Chevron));
+
+      // 手动压缩：直接发宿主的 /compact，不经过插件私有命令，换后端也接得上。
+      const compactUi = (ui && ui.compact) || {};
+      const compactCard = h("div", { className: "sp-card sp-compact-card" },
+        h("div", { className: "sp-card-title" }, t("spine.compactTitle")),
         h("button", {
-          className: "sp-btn sp-entry",
-          "data-sub-open": "debug",
-          onClick: () => ui && ui.openSub && ui.openSub("debug"),
+          className: "sp-entry-card",
+          "data-compact": "run",
+          disabled: Boolean(compactUi.pending),
+          onClick: () => compactUi.run && compactUi.run(),
         },
-          h("span", { className: "sp-entry-name" }, t("spine.debug")),
+          h("span", { className: "sp-entry-name" }, compactUi.pending ? t("spine.compacting") : t("spine.compactBtn")),
           h(Chevron)),
-        h("button", {
-          className: "sp-btn sp-entry",
-          "data-sub-open": "docs",
-          onClick: () => ui && ui.openSub && ui.openSub("docs"),
-        },
-          h("span", { className: "sp-entry-name" }, t("spine.docs")),
-          h(Chevron)));
+        compactUi.ok ? h("div", { className: "sp-field-hint", "data-compact-ok": "1" }, t("spine.compacted")) : null,
+        compactUi.error ? h("div", { className: "sp-channel sp-channel-bad" }, t("spine.compactFailed") + " " + compactUi.error) : null);
       const docsCard = h("details", {
         className: "sp-details sp-card",
         "data-sub": "docs",
         open: Boolean(ui && ui.subView === "docs"),
         onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
       },
-        h("summary", { className: "sp-card-title" }, t("spine.docs"), h(Chevron)),
+        h("summary", {
+          className: "sp-card-title",
+          onClick: (event) => { event.preventDefault(); ui && ui.openSub && ui.openSub("docs"); },
+        }, t("spine.docs"), h(Chevron)),
         h("div", { className: "sp-detail" },
           h("button", {
             className: "sp-btn sp-sub-close",
@@ -2478,7 +2517,10 @@ window.__ModuleLoader__.load({
         open: Boolean(ui && ui.subView === "debug"),
         onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
       },
-        h("summary", { className: "sp-card-title" }, t("spine.debug"), h(Chevron)),
+        h("summary", {
+          className: "sp-card-title",
+          onClick: (event) => { event.preventDefault(); ui && ui.openSub && ui.openSub("debug"); },
+        }, t("spine.debug"), h(Chevron)),
         h("div", { className: "sp-detail" },
           h("button", {
             className: "sp-btn sp-sub-close",
@@ -2571,8 +2613,20 @@ window.__ModuleLoader__.load({
         // 右列放「切点 + 更多」：切点卡收起时只有两行，下面正好接调试/文档两个入口。
         h("div", { className: "sp-duo" },
           h("div", { className: "sp-duo-col" }, statsCard),
-          h("div", { className: "sp-duo-col" }, knobsCard, entriesCard)),
+          h("div", { className: "sp-duo-col sp-duo-fill" },
+            knobsCard,
+            compactCard,
+            entryCard("debug", "spine.debug"),
+            entryCard("docs", "spine.docs"))),
         timelineCard,
+        // 浮层遮罩：点空白处直接收起（和「返回」是同一个出口）。
+        ui && ui.subView
+          ? h("div", {
+            className: "sp-sub-scrim",
+            key: "sub-scrim",
+            onClick: () => ui && ui.closeSub && ui.closeSub(),
+          })
+          : null,
         docsCard,
         debugCard);
     }
@@ -2610,6 +2664,15 @@ window.__ModuleLoader__.load({
       const [timelineAll, setTimelineAll] = React.useState(false);
       // 二级界面：null | knobs | docs | debug。打开时浮在面板上方，关掉页面高度不变。
       const [subView, setSubView] = React.useState(null);
+      // Esc 也收浮层：键盘用户不用回桌面找按钮。
+      React.useEffect(() => {
+        if (!subView) return undefined;
+        const onKey = (event) => { if (event.key === "Escape") setSubView(null); };
+        document.addEventListener("keydown", onKey);
+        return () => document.removeEventListener("keydown", onKey);
+      }, [subView]);
+      // 手动压缩：按钮点了立刻置灰，结果只写一行（成功「已提交」/ 失败给原因）。
+      const [compactAsk, setCompactAsk] = React.useState({ pending: false, ok: false, error: "" });
       // 自定义档：新建表单（＋）、名字、范围，以及「再点一次删除」的待确认 id。
       const [presetForm, setPresetForm] = React.useState(false);
       const [presetName, setPresetName] = React.useState("");
@@ -2647,6 +2710,20 @@ window.__ModuleLoader__.load({
           subView,
           openSub: (name) => setSubView(name),
           closeSub: () => setSubView(null),
+          compact: {
+            ...compactAsk,
+            run: () => {
+              if (compactAsk.pending) return;
+              setCompactAsk({ pending: true, ok: false, error: "" });
+              const target = panelSid;
+              Promise.resolve(typeof props.runCompact === "function" ? props.runCompact(target) : { ok: false, missing: true })
+                .then((result) => {
+                  if (result && result.ok) { setCompactAsk({ pending: false, ok: true, error: "" }); return; }
+                  setCompactAsk({ pending: false, ok: false, error: (result && (result.message || (result.missing ? "" : ""))) || "" });
+                })
+                .catch((error) => setCompactAsk({ pending: false, ok: false, error: String(error && error.message ? error.message : error) }));
+            },
+          },
           // 更新日志的状态必须放在 ui 里：面板读的是 ui.newsOpen / ui.toggleNews。
           // 之前放进第 6 个参数（mid），于是 open 恒为 false、按钮点了没反应。
           newsOpen,
@@ -2738,6 +2815,29 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         // 面板要靠宿主打开本机文档：把上下文留给渲染期用（服务取不到也不影响加载）。
         setBridgeCtx(ctx);
+        /**
+         * 「手动压缩」按钮：给当前会话发宿主的 /compact。
+         * sessions 不进 inject（只有这颗按钮要它，为它等服务会拖住整个 client），按需取；
+         * 取不到就回一个明确的失败，按钮不会卡住。
+         */
+        const runCompact = (sessionId) => {
+          try {
+            const sessions = ctx.sessions ?? (typeof ctx.get === "function" ? ctx.get("sessions") : null);
+            const binding = sessions?.binding?.(sessionId);
+            if (!binding) return Promise.resolve({ ok: false, missing: true });
+            return Promise.resolve(binding.session.command("/compact")).then((result) => {
+              if (result === null || typeof result !== "object") return { ok: false, message: String(result) };
+              if (!result.ok) {
+                const failure = result.error;
+                const message = failure && typeof failure === "object" && typeof failure.message === "string" ? failure.message : String(failure);
+                return { ok: false, message };
+              }
+              return { ok: true, matched: !(result.value && result.value.matched === false) };
+            }).catch((error) => ({ ok: false, message: String(error?.message ?? error) }));
+          } catch (error) {
+            return Promise.resolve({ ok: false, message: String(error?.message ?? error) });
+          }
+        };
         const t = ctx.locale.bind("liveCompact");
         ctx.effect(() => ctx.locale.register("liveCompact", { zh, en }), "live-compact: settings dictionary");
         const fields = [PRESET_FIELD, ...KEYS.map(settingsNumberField)];
@@ -2847,7 +2947,7 @@ window.__ModuleLoader__.load({
                 locale: "liveCompact",
                 label: () => t("tab.spine"),
               },
-              (props) => h(SpinePanel, { ...props, t, model, actions: panelActions }),
+              (props) => h(SpinePanel, { ...props, t, model, actions: panelActions, runCompact }),
             ));
           } catch (error) {
             ctx.logger?.debug?.("spine: cuts panel registration skipped: " + String(error?.message ?? error));
