@@ -553,6 +553,28 @@ window.__ModuleLoader__.load({
       "spine.midConfirm": "确认开启",
       "spine.midCancel": "先不改",
       "spine.valueOut": "当前值超出滑块范围，拖动会落回范围内",
+      // ---- 输入框旁的上下文挂件 ----
+      "ctx.trigger": "上下文窗口，已用 {percent}%",
+      "ctx.title": "上下文窗口",
+      "ctx.system": "系统提示词",
+      "ctx.tools": "系统工具",
+      "ctx.skill": "Skill（{count}个）",
+      "ctx.messages": "消息",
+      "ctx.other": "其他",
+      "ctx.otherHint": "已用总量减去已归类部分；包含供应商口径与估算之间的差异。",
+      "ctx.compact": "压缩上下文",
+      "ctx.compacting": "正在压缩…",
+      "ctx.compacted": "已提交 /compact",
+      "ctx.compactFailed": "压缩请求失败：{message}",
+      "ctx.notReady": "会话尚未就绪，无法压缩",
+      "ctx.unavailable": "/compact 命令不可用",
+      "ctx.knifeTitle": "刀法统计",
+      "ctx.knifeTotal": "共 {count} 刀",
+      "ctx.knifeNone": "暂无压缩记录",
+      "ctx.colName": "刀法",
+      "ctx.colCuts": "刀数",
+      "ctx.colTokens": "切掉",
+      "ctx.colShare": "占比",
     };
     const en = {
       takeoverPresets: "Take over official presets",
@@ -767,6 +789,28 @@ window.__ModuleLoader__.load({
       "spine.midConfirm": "Turn on",
       "spine.midCancel": "Not now",
       "spine.valueOut": "The current value is outside the slider range; dragging clamps it",
+      // ---- composer context widget ----
+      "ctx.trigger": "Context window, {percent}% used",
+      "ctx.title": "Context window",
+      "ctx.system": "System prompt",
+      "ctx.tools": "System tools",
+      "ctx.skill": "Skills ({count})",
+      "ctx.messages": "Messages",
+      "ctx.other": "Other",
+      "ctx.otherHint": "Used total minus the attributed rows; includes the gap between provider accounting and the estimate.",
+      "ctx.compact": "Compact context",
+      "ctx.compacting": "Compacting…",
+      "ctx.compacted": "Submitted /compact",
+      "ctx.compactFailed": "Compaction request failed: {message}",
+      "ctx.notReady": "Session is not ready; cannot compact",
+      "ctx.unavailable": "/compact is unavailable",
+      "ctx.knifeTitle": "Compaction cuts",
+      "ctx.knifeTotal": "{count} cuts",
+      "ctx.knifeNone": "No compactions yet",
+      "ctx.colName": "Knife",
+      "ctx.colCuts": "Cuts",
+      "ctx.colTokens": "Dropped",
+      "ctx.colShare": "Share",
     };
 
     const SPINE_KEY = "spine.cuts";
@@ -959,6 +1003,52 @@ window.__ModuleLoader__.load({
       ".sp-doc-ul{margin:0 0 8px;padding-left:18px;font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary)}",
       ".sp-doc-ul li{margin-bottom:3px}",
     ].join("\n");
+    /**
+     * 输入框旁那颗上下文挂件的样式。类名统一 ctx- 前缀，和上面 .sp-* 的面板样式
+     * 互不影响；配色全部走宿主 CSS 变量，深浅主题自动跟随。
+     */
+    const CONTEXT_CSS = [
+      ".ctx-root{display:inline-flex;flex:none}",
+      ".ctx-trigger{display:inline-flex;align-items:center;gap:6px;padding:1px 8px;border:none;background:transparent;border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-tertiary);cursor:pointer;font-family:inherit;font-size:var(--dsh-content-font-size-secondary,13px);font-variant-numeric:tabular-nums;line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));white-space:nowrap}",
+      ".ctx-trigger:hover,.ctx-trigger[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}",
+      ".ctx-trigger svg{flex:none}",
+      ".ctx-track{fill:none;stroke:var(--dsw-alias-border-l3);stroke-width:2px}",
+      ".ctx-fill{fill:none;stroke:var(--dsw-alias-label-tertiary);stroke-width:2px;stroke-linecap:round}",
+      ".ctx-panel{position:fixed;z-index:1100;box-sizing:border-box;width:min(320px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow-x:hidden;overflow-y:auto;padding:14px 14px 12px;border:0;border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-prominent);backdrop-filter:var(--dsw-menu-backdrop-filter);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;cursor:default}",
+      ".ctx-head{display:flex;align-items:flex-start;gap:12px}",
+      ".ctx-title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:600}",
+      ".ctx-reading{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;line-height:18px}",
+      ".ctx-percent{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}",
+      ".ctx-figures{color:var(--dsw-alias-label-tertiary);font-size:11px;font-variant-numeric:tabular-nums}",
+      ".ctx-bar{display:flex;gap:2px;height:6px;margin:12px 0 10px;border-radius:999px;overflow:hidden;background:var(--dsw-alias-interactive-bg-hover)}",
+      ".ctx-seg{flex:none;height:100%;min-width:2px;border-radius:999px}",
+      ".ctx-rows{margin:2px 0 12px;padding:0}",
+      ".ctx-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:3px 0}",
+      ".ctx-row dt{display:flex;align-items:center;min-width:0;color:var(--dsw-alias-label-secondary)}",
+      ".ctx-dot{width:8px;height:8px;border-radius:2px;margin-right:8px;flex:none}",
+      ".ctx-value{color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums;margin:0}",
+      ".ctx-sep{height:1px;margin:12px 0 10px;background:var(--dsw-alias-border-l2)}",
+      ".ctx-subhead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px}",
+      ".ctx-subtitle{color:var(--dsw-alias-label-primary);font-size:12px;font-weight:600}",
+      ".ctx-subtotal{color:var(--dsw-alias-label-tertiary);font-size:11px;font-variant-numeric:tabular-nums}",
+      ".ctx-kbar{display:flex;gap:2px;height:6px;margin-bottom:8px;border-radius:999px;overflow:hidden;background:var(--dsw-alias-interactive-bg-hover)}",
+      ".ctx-kseg{height:100%;min-width:2px;border-radius:999px}",
+      ".ctx-khead,.ctx-krow{display:grid;grid-template-columns:1fr 32px 52px 40px;align-items:center;gap:6px}",
+      ".ctx-khead{color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:16px}",
+      ".ctx-khead span:nth-child(n+2){text-align:right}",
+      ".ctx-krow{font-size:12px;line-height:18px}",
+      ".ctx-kname{display:flex;align-items:center;min-width:0;color:var(--dsw-alias-label-secondary)}",
+      ".ctx-knum{text-align:right;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
+      ".ctx-kpct{text-align:right;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
+      ".ctx-btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:34px;padding:0 12px;border:none;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}",
+      ".ctx-btn svg{flex:none;display:block;transform:translateY(1px)}",
+      ".ctx-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}",
+      ".ctx-btn:disabled{opacity:.6;cursor:default}",
+      ".ctx-status{margin:8px 0 0;color:var(--dsw-alias-state-success-primary,#2f7f5f);font-size:12px;line-height:18px}",
+      ".ctx-error{margin:8px 0 0;color:var(--dsw-alias-state-error-primary,#c0392b);font-size:12px;line-height:18px;word-break:break-word}",
+    ].join("\n");
+    /** 一次注入：压缩页和输入框挂件共用同一张样式表。 */
+    const PAGE_CSS = SPINE_CSS + "\n" + CONTEXT_CSS;
     // 五类刀法：小刀 / 中刀 / 大刀 都是本插件动的手（大刀借用官方摘要），
     // 官方是插件接管前后的原生压缩，旧卡片是我们早期没记刀名的卡。
     const KNIFE_ORDER = ["small", "merge", "big", "official", "plugin"];
@@ -2589,6 +2679,362 @@ window.__ModuleLoader__.load({
     }
 
 
+    /**
+     * 输入框旁的上下文挂件：一颗环形占比 + 点开后的分解面板。
+     *
+     * 分解面板回答「这段上下文由什么组成」，刀法统计回答「本插件动了多少」——
+     * 两者本来是分开的两个入口（.sp 的「压缩」页 + 宿主原生读数），放在同一个
+     * popover 里，调参时不用来回切页。数据全部来自宿主投影与自己的 spine.cuts，
+     * 不额外开通道。
+     */
+    const CTX_COLORS = {
+      system: "var(--dsw-alias-chart-system,#8b9bb4)",
+      tools: "var(--dsw-alias-chart-tools,#a78bfa)",
+      skill: "color-mix(in srgb, var(--dsw-alias-chart-tools,#a78bfa) 55%, var(--dsw-specific-menu))",
+      messages: "var(--dsw-alias-chart-messages,#4f8fd8)",
+      other: "var(--dsw-alias-border-l2,#d7dde5)",
+    };
+    const CTX_RADIUS = 5.5;
+    const CTX_CIRCUMFERENCE = 2 * Math.PI * CTX_RADIUS;
+    /** 面板要挂到 body：取不到 react-dom 时退化成原地渲染。 */
+    const createPortal = (() => {
+      try {
+        const mod = require("react-dom");
+        return typeof mod?.createPortal === "function" ? mod.createPortal : null;
+      } catch { return null; }
+    })();
+    /** 挂件里只列这四类刀法：plugin（1.3.13 之前没记刀名的旧卡）并入小刀。 */
+    const CTX_KNIVES = [
+      { key: "small", color: KNIFE_COLOR.small, label: "spine.knifeSmall" },
+      { key: "merge", color: KNIFE_COLOR.merge, label: "spine.knifeMerge" },
+      { key: "big", color: KNIFE_COLOR.big, label: "spine.knifeBig" },
+      { key: "official", color: KNIFE_COLOR.official, label: "spine.knifeOfficial" },
+    ];
+
+    /** 占用率：投影两侧都齐了才算得出来，否则返回 null（挂件不渲染）。 */
+    function readContext(pressure) {
+      if (pressure === undefined || pressure === null) return null;
+      const used = pressure.projectedTokens ?? pressure.pressureTokens;
+      const window = pressure.contextWindow;
+      if (typeof used !== "number" || typeof window !== "number" || window <= 0) return null;
+      return { used, window, percent: Math.min(100, Math.round((used / window) * 100)) };
+    }
+
+    /**
+     * 最新一次 skill-catalog 注入的条数与 token（4 字符 ≈ 1 token，和宿主分解同口径）。
+     * 读不到注入就返回 null，Skill 行整行不出现。
+     */
+    function readContextSkill(nodes) {
+      let latest = null;
+      for (const node of nodes || []) {
+        if (node === null || typeof node !== "object" || node.kind !== "context") continue;
+        const source = node.source;
+        if (source === null || typeof source !== "object" || source.kind !== "skill-catalog") continue;
+        if (latest === null || (node.seq ?? 0) > (latest.seq ?? 0)) latest = node;
+      }
+      if (latest === null) return null;
+      const blocks = Array.isArray(latest.content) ? latest.content : [];
+      const text = blocks.map((block) => (typeof block?.text === "string" ? block.text : "")).join("");
+      const entries = Array.isArray(latest.source.entries) ? latest.source.entries.length : 0;
+      const count = entries > 0 ? entries : (text.match(/^- `[^`]+`:/gm) || []).length;
+      if (count === 0) return null;
+      return { count, tokens: Math.ceil(text.length / 4) + 4 };
+    }
+
+    /** 分解行：system / tools / skill / messages / other，other 是减去已归类后的余量。 */
+    function buildContextRows(context, breakdown, skill, t) {
+      if (breakdown === undefined || breakdown === null) return [];
+      const system = breakdown.systemTokens ?? 0;
+      const tools = breakdown.toolsTokens ?? 0;
+      const messageTokens = breakdown.messageTokens ?? 0;
+      const skillTokens = skill === null ? 0 : Math.min(skill.tokens, messageTokens);
+      const messages = Math.max(0, messageTokens - skillTokens);
+      const known = system + tools + messages + skillTokens;
+      const other = Math.max(0, context.used - known);
+      const rows = [
+        { key: "system", label: t("ctx.system"), tokens: system, color: CTX_COLORS.system },
+        { key: "tools", label: t("ctx.tools"), tokens: tools, color: CTX_COLORS.tools },
+      ];
+      if (skill !== null) {
+        rows.push({
+          key: "skill",
+          label: t("ctx.skill").replace("{count}", String(skill.count)),
+          tokens: skillTokens,
+          color: CTX_COLORS.skill,
+        });
+      }
+      rows.push({ key: "messages", label: t("ctx.messages"), tokens: messages, color: CTX_COLORS.messages });
+      rows.push({ key: "other", label: t("ctx.other"), tokens: other, color: CTX_COLORS.other, hint: t("ctx.otherHint") });
+      return rows;
+    }
+
+    /**
+     * 刀法统计（小刀 / 中刀 / 大刀 / 官方），口径和「压缩」页一致：占比按切掉的 token 算。
+     *
+     * **只列存在的刀法**：`deepCutAbove` 为 0 时中刀不可能发生，`officialAbove` 为 0
+     * 时大刀不可能发生，那两行就不占地方；但开关关掉之前已经切过的（counts > 0）
+     * 仍然要显示，否则历史账目凭空消失。小刀与官方始终显示。
+     */
+    function readKnifeStats(projection, t) {
+      if (projection === undefined || projection === null) return null;
+      const kinds = projection.kinds ?? null;
+      const savedBy = projection.savedBy ?? null;
+      if (kinds === null && savedBy === null) return null;
+      const counts = {
+        small: (kinds?.small ?? 0) + (kinds?.plugin ?? 0),
+        merge: kinds?.merge ?? 0,
+        big: kinds?.big ?? 0,
+        official: kinds?.official ?? 0,
+      };
+      const tokens = {
+        small: (savedBy?.small ?? 0) + (savedBy?.plugin ?? 0),
+        merge: savedBy?.merge ?? 0,
+        big: savedBy?.big ?? 0,
+        official: savedBy?.official ?? 0,
+      };
+      const settings = projection.settings ?? null;
+      const available = {
+        small: true,
+        merge: Number(settings?.deepCutAbove ?? 0) > 0 || counts.merge > 0,
+        big: Number(settings?.officialAbove ?? 0) > 0 || counts.big > 0,
+        official: true,
+      };
+      const visible = CTX_KNIVES.filter((item) => available[item.key]);
+      const totalCuts = counts.small + counts.merge + counts.big + counts.official;
+      const totalTokens = tokens.small + tokens.merge + tokens.big + tokens.official;
+      const rows = visible.map((item) => ({
+        key: item.key,
+        color: item.color,
+        label: t(item.label),
+        cuts: counts[item.key],
+        tokens: tokens[item.key],
+        percent: totalTokens === 0 ? 0 : Math.round((tokens[item.key] / totalTokens) * 100),
+      }));
+      const bar = totalTokens === 0 ? [] : visible
+        .filter((item) => tokens[item.key] > 0)
+        .map((item) => ({
+          key: item.key,
+          color: item.color,
+          width: Math.max(1.5, (tokens[item.key] / totalTokens) * 100),
+        }));
+      return { totalCuts, totalTokens, rows, bar };
+    }
+
+    /**
+     * 输入框旁的上下文挂件本体。
+     *
+     * 钩子必须在最外层且每次渲染顺序一致，所以 useProjection / useChat 都在 try 之外
+     * 直接调；投影缺失只会让某一块返回 null，不会整颗组件炸掉。
+     */
+    function ContextDock(props) {
+      const { t } = props;
+      const pressure = props.useProjection("contextPressure");
+      const breakdown = props.useProjection("contextBreakdown");
+      let spineCuts;
+      try { spineCuts = props.useProjection(SPINE_KEY); } catch { spineCuts = undefined; }
+      const nodes = typeof props.useChat === "function" ? props.useChat((snapshot) => snapshot.legacy.nodes) : null;
+      const context = readContext(pressure);
+      const skill = React.useMemo(() => readContextSkill(nodes), [nodes]);
+      const knife = React.useMemo(() => readKnifeStats(spineCuts, t), [spineCuts, t]);
+      const rows = React.useMemo(
+        () => (context === null ? [] : buildContextRows(context, breakdown, skill, t)),
+        [context, breakdown, skill, t],
+      );
+      const [open, setOpen] = React.useState(false);
+      const [position, setPosition] = React.useState(null);
+      const [pending, setPending] = React.useState(false);
+      const [submitted, setSubmitted] = React.useState(false);
+      const [error, setError] = React.useState(null);
+      const rootRef = React.useRef(null);
+      const panelRef = React.useRef(null);
+      const available = context !== null;
+
+      // 点到外面 / 按 Esc 收起。
+      React.useEffect(() => {
+        if (!open) return undefined;
+        const onPointerDown = (event) => {
+          const target = event.target;
+          if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+          setOpen(false);
+        };
+        const onKeyDown = (event) => { if (event.key === "Escape") setOpen(false); };
+        document.addEventListener("pointerdown", onPointerDown, true);
+        document.addEventListener("keydown", onKeyDown);
+        return () => {
+          document.removeEventListener("pointerdown", onPointerDown, true);
+          document.removeEventListener("keydown", onKeyDown);
+        };
+      }, [open]);
+
+      // 贴在触发按钮上方；上方放不下就翻到下方，并夹在视口内。
+      React.useLayoutEffect(() => {
+        if (!open) { setPosition(null); return undefined; }
+        const place = () => {
+          const anchor = rootRef.current?.getBoundingClientRect();
+          const panel = panelRef.current;
+          if (anchor === undefined || anchor === null || panel === null) return;
+          const width = panel.offsetWidth;
+          const height = panel.offsetHeight;
+          const vw = window.innerWidth;
+          const vh = window.innerHeight;
+          let left = anchor.left;
+          if (left + width > vw - 12) left = Math.max(12, vw - width - 12);
+          let top = anchor.top - height - 8;
+          if (top < 12) top = anchor.bottom + 8;
+          if (top + height > vh - 12) top = Math.max(12, vh - height - 12);
+          setPosition({ left, top });
+        };
+        place();
+        window.addEventListener("resize", place);
+        window.addEventListener("scroll", place, true);
+        return () => {
+          window.removeEventListener("resize", place);
+          window.removeEventListener("scroll", place, true);
+        };
+      }, [open, rows.length, knife === null ? 0 : knife.rows.length]);
+
+      if (!available) return null;
+
+      const percent = context.percent;
+      const segments = rows
+        .filter((row) => row.tokens > 0 && context.window > 0)
+        .map((row) => ({
+          key: row.key,
+          color: row.color,
+          width: Math.min(100, (row.tokens / context.window) * 100),
+        }));
+
+      const onCompact = () => {
+        if (pending) return;
+        if (typeof props.runCompact !== "function") { setError(t("ctx.notReady")); return; }
+        setPending(true);
+        setSubmitted(false);
+        setError(null);
+        Promise.resolve()
+          .then(() => props.runCompact(props.sessionId))
+          .then((result) => {
+            setPending(false);
+            if (result !== null && typeof result === "object" && result.ok === true) {
+              if (result.missing === true) { setError(t("ctx.notReady")); return; }
+              setSubmitted(true);
+              return;
+            }
+            const message = result !== null && typeof result === "object" && result.message ? String(result.message) : "";
+            setError(message === "" ? t("ctx.unavailable") : t("ctx.compactFailed").replace("{message}", message));
+          })
+          .catch((reason) => {
+            setPending(false);
+            const message = reason instanceof Error ? reason.message : String(reason);
+            setError(t("ctx.compactFailed").replace("{message}", message));
+          });
+      };
+
+      const panel = open && h("div", {
+        ref: panelRef,
+        className: "ctx-panel",
+        role: "dialog",
+        tabIndex: -1,
+        "aria-label": t("ctx.title"),
+        style: {
+          left: position === null ? -9999 : position.left,
+          top: position === null ? -9999 : position.top,
+          visibility: position === null ? "hidden" : "visible",
+        },
+      },
+      h("div", { className: "ctx-head" },
+        h("span", { className: "ctx-title" }, t("ctx.title")),
+        h("span", { className: "ctx-reading" },
+          h("span", { className: "ctx-percent" }, percent + "%"),
+          h("span", { className: "ctx-figures" }, "~" + fmtTokens(context.used) + " / " + fmtTokens(context.window)),
+        ),
+      ),
+      h("div", { className: "ctx-bar", "aria-hidden": "true" },
+        segments.map((segment) => h("div", {
+          key: segment.key,
+          className: "ctx-seg",
+          style: { width: segment.width + "%", background: segment.color },
+        })),
+      ),
+      rows.length > 0 && h("dl", { className: "ctx-rows" },
+        rows.map((row) => h("div", { key: row.key, className: "ctx-row" },
+          h("dt", null,
+            h("span", { className: "ctx-dot", style: { background: row.color }, "aria-hidden": "true" }),
+            row.label,
+          ),
+          h("dd", { className: "ctx-value", title: row.hint }, "~" + fmtTokens(row.tokens)),
+        )),
+      ),
+      knife !== null && h("div", null,
+        h("div", { className: "ctx-sep", "aria-hidden": "true" }),
+        h("div", { className: "ctx-subhead" },
+          h("span", { className: "ctx-subtitle" }, t("ctx.knifeTitle")),
+          h("span", { className: "ctx-subtotal" },
+            knife.totalCuts === 0 ? t("ctx.knifeNone") : t("ctx.knifeTotal").replace("{count}", String(knife.totalCuts))),
+        ),
+        knife.bar.length > 0 && h("div", { className: "ctx-kbar", "aria-hidden": "true" },
+          knife.bar.map((segment) => h("div", {
+            key: segment.key,
+            className: "ctx-kseg",
+            style: { width: segment.width + "%", background: segment.color },
+          })),
+        ),
+        h("div", { className: "ctx-khead" },
+          h("span", null, t("ctx.colName")),
+          h("span", null, t("ctx.colCuts")),
+          h("span", null, t("ctx.colTokens")),
+          h("span", null, t("ctx.colShare")),
+        ),
+        knife.rows.map((row) => h("div", { key: row.key, className: "ctx-krow" },
+          h("span", { className: "ctx-kname" },
+            h("span", { className: "ctx-dot", style: { background: row.color }, "aria-hidden": "true" }),
+            row.label,
+          ),
+          h("span", { className: "ctx-knum" }, String(row.cuts)),
+          h("span", { className: "ctx-knum" }, row.tokens > 0 ? "~" + fmtTokens(row.tokens) : "—"),
+          h("span", { className: "ctx-kpct" }, row.percent === 0 ? "—" : row.percent + "%"),
+        )),
+      ),
+      h("button", { type: "button", className: "ctx-btn", disabled: pending, onClick: onCompact },
+        h("svg", { viewBox: "0 0 1024 1024", width: 14, height: 14, "aria-hidden": "true", fill: "currentColor" },
+          h("path", { d: "M808.96 943.786667H215.04c-22.186667 0-44.373333-10.24-58.026667-29.013334-13.653333-18.773333-17.066667-42.666667-10.24-64.853333 25.6-80.213333 68.266667-230.4 68.266667-337.92 0-107.52-42.666667-257.706667-68.266667-337.92-6.826667-22.186667-3.413333-46.08 10.24-64.853333 13.653333-18.773333 34.133333-29.013333 58.026667-29.013334h593.92c22.186667 0 44.373333 10.24 58.026667 29.013334 13.653333 18.773333 17.066667 42.666667 10.24 64.853333-25.6 80.213333-68.266667 230.4-68.266667 337.92 0 107.52 42.666667 257.706667 68.266667 337.92 6.826667 22.186667 3.413333 46.08-10.24 64.853333-13.653333 18.773333-34.133333 29.013333-58.026667 29.013334z" }),
+        ),
+        pending ? t("ctx.compacting") : t("ctx.compact"),
+      ),
+      submitted && h("p", { className: "ctx-status", role: "status" }, t("ctx.compacted")),
+      error !== null && h("p", { className: "ctx-error", role: "alert" }, error),
+      );
+
+      return h(React.Fragment, null,
+        h("span", { ref: rootRef, className: "ctx-root", "data-spine-context-root": "", key: "ctx-root" },
+          h("button", {
+            type: "button",
+            className: "ctx-trigger",
+            title: t("ctx.trigger").replace("{percent}", String(percent)),
+            "aria-label": t("ctx.trigger").replace("{percent}", String(percent)),
+            "aria-haspopup": "dialog",
+            "aria-expanded": open,
+            onClick: () => {
+              if (!open) { setSubmitted(false); setError(null); }
+              setOpen(!open);
+            },
+          },
+          h("svg", { viewBox: "0 0 14 14", width: 14, height: 14, "aria-hidden": "true" },
+            h("circle", { className: "ctx-track", cx: 7, cy: 7, r: CTX_RADIUS }),
+            h("circle", {
+              className: "ctx-fill", cx: 7, cy: 7, r: CTX_RADIUS,
+              strokeDasharray: (CTX_CIRCUMFERENCE * percent) / 100 + " " + CTX_CIRCUMFERENCE,
+              transform: "rotate(-90 7 7)",
+            }),
+          ),
+          h("span", null, percent + "%"),
+          ),
+        ),
+        // 面板挂到 body 上：composer 的祖先可能带 transform / overflow，直接渲染在
+        // 触发按钮里会被裁掉。取不到 react-dom 时退化成原地渲染，功能不丢。
+        open && (createPortal !== null ? createPortal(panel, document.body) : panel),
+      );
+    }
+
     function SettingsPage(props) {
       const { t } = props;
       const state = props.useLiveCompact((snapshot) => snapshot);
@@ -2729,14 +3175,14 @@ window.__ModuleLoader__.load({
         }), "live-compact: settings page");
         // 会话里的「压缩」页：读宿主投影出统计，配置沿用设置页那份表单模型（同一份 ledger，
         // 在这里改就是改真配置）。单独一个 effect：面板挂不上不影响设置页。
-        if (typeof styles !== "undefined" && styles?.insert) styles.insert(SPINE_CSS);
+        if (typeof styles !== "undefined" && styles?.insert) styles.insert(PAGE_CSS);
         else if (typeof document !== "undefined") {
           const marker = "dsh-live-compact-x#spine-panel";
           if (!document.querySelector("style[data-plugin-css=" + JSON.stringify(marker) + "]")) {
             const styleEl = document.createElement("style");
             styleEl.dataset.plugin = "dsh-live-compact-x";
             styleEl.dataset.pluginCss = marker;
-            styleEl.textContent = SPINE_CSS;
+            styleEl.textContent = PAGE_CSS;
             document.head.appendChild(styleEl);
           }
         }
@@ -2745,6 +3191,34 @@ window.__ModuleLoader__.load({
           resetField: (name) => model.actions().resetField?.(name),
           save: () => model.actions().save?.(),
           discard: () => model.actions().discard?.(),
+        };
+        /**
+         * 挂件里的「压缩上下文」按钮：走会话自己的命令面，发宿主的 `/compact`。
+         * 不用插件私有命令，这样换成别的压缩后端（或退回官方 compaction-basic）
+         * 按钮依然能接上当前挂载的那个引擎。
+         */
+        const runCompact = (sessionId) => {
+          try {
+            // sessions 不在 inject 里（只有这颗按钮要它，为它等一个服务会拖垮整个
+            // client），按需取；宿主没给就退回「会话尚未就绪」。
+            const sessions = ctx.sessions ?? (typeof ctx.get === "function" ? ctx.get("sessions") : null);
+            const binding = sessions?.binding?.(sessionId);
+            if (binding === undefined || binding === null) return Promise.resolve({ ok: false, missing: true });
+            return Promise.resolve(binding.session.command("/compact")).then((result) => {
+              if (result === null || typeof result !== "object") return { ok: false, message: String(result) };
+              if (!result.ok) {
+                const failure = result.error;
+                const message = failure !== null && typeof failure === "object" && typeof failure.message === "string"
+                  ? failure.message
+                  : String(failure);
+                return { ok: false, message };
+              }
+              // 入队不等于压完：只回「已提交」，统计靠投影刷新。
+              return { ok: true, matched: !(result.value !== null && typeof result.value === "object" && result.value.matched === false) };
+            });
+          } catch (error) {
+            return Promise.resolve({ ok: false, message: String(error?.message ?? error) });
+          }
         };
         // 面板注册也包一层：面板挂不上绝不连累设置页。
         ctx.effect(() => {
@@ -2763,6 +3237,23 @@ window.__ModuleLoader__.load({
             ctx.logger?.debug?.("spine: cuts panel registration skipped: " + String(error?.message ?? error));
           }
         }, "live-compact: cuts panel");
+        // 输入框旁的上下文挂件：环形占比 + 点开的分解面板（含刀法统计与手动压缩）。
+        // 挂不上不影响「压缩」页与设置页，所以单独一个 effect + try。
+        ctx.effect(() => {
+          try {
+            ctx.slots.inject("conversation.composer.dock", () => ctx.slots.register(
+              {
+                name: "conversation.composer.dock",
+                id: "dsh-live-compact-x#context-dock",
+                order: 100,
+                locale: "liveCompact",
+              },
+              (props) => h(ContextDock, { ...props, t, runCompact }),
+            ));
+          } catch (error) {
+            ctx.logger?.debug?.("spine: context dock registration skipped: " + String(error?.message ?? error));
+          }
+        }, "live-compact: context dock");
       },
       // 只是给本地测试用的出口；加载器只认 inject / apply。
       __test: {
@@ -2772,6 +3263,9 @@ window.__ModuleLoader__.load({
         shortPath, DocRow, openHostPath, setBridgeCtx, createSettingsStore, postBridge,
         cutBars, CutRow, Chevron,
         NewsCard, readSeenVersion, writeSeenVersion, NEWS_SEEN_KEY, newsShouldAuto, CLIENT_NEWS, mergeNews, compareVersion,
+        // 输入框挂件：导出纯函数与组件，供离线渲染测试。
+        ContextDock, CONTEXT_CSS, PAGE_CSS, CTX_KNIVES,
+        readContext, readContextSkill, buildContextRows, readKnifeStats,
       },
     };
   },
