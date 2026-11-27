@@ -2711,6 +2711,50 @@ window.__ModuleLoader__.load({
       { key: "official", color: KNIFE_COLOR.official, label: "spine.knifeOfficial" },
     ];
 
+    /**
+     * 接管宿主原生那颗上下文读数。
+     *
+     * 挂件自己就是「14×14 环 + r=5.5」的形状，和原生那颗一模一样，所以只能按特征
+     * 找原生的那一个，同时排除自己的根、别的插件的 slot 条目与读数——否则要么漏藏，
+     * 要么把同伴一起藏了。卸载时逐个还原 display，不留副作用。
+     */
+    function hideNativeMeter(root) {
+      const doc = root?.ownerDocument;
+      const view = doc?.defaultView;
+      const dock = root?.closest?.("[data-composer-dock]");
+      if (!doc || !view || !dock) return () => {};
+      const hidden = new Map();
+      const reconcile = () => {
+        for (const sibling of Array.from(dock.children)) {
+          if (!(sibling instanceof view.HTMLElement) || sibling.tagName !== "SPAN") continue;
+          if (sibling.contains(root) || hidden.has(sibling)) continue;
+          if (sibling.hasAttribute("data-slot-entry")
+            || sibling.hasAttribute("data-spine-context-root")
+            || sibling.hasAttribute("data-ctxwin-root")
+            || sibling.hasAttribute("data-dsh-token-total-stat")) continue;
+          if (sibling.querySelector('button[aria-haspopup="dialog"] svg[viewBox="0 0 14 14"] circle[cx="7"][cy="7"][r="5.5"]') === null) continue;
+          hidden.set(sibling, {
+            display: sibling.style.getPropertyValue("display"),
+            priority: sibling.style.getPropertyPriority("display"),
+          });
+          sibling.setAttribute("data-spine-native", "");
+          sibling.style.setProperty("display", "none", "important");
+        }
+      };
+      reconcile();
+      const observer = new view.MutationObserver(reconcile);
+      observer.observe(dock, { childList: true, subtree: true });
+      return () => {
+        observer.disconnect();
+        for (const [element, previous] of hidden) {
+          element.removeAttribute("data-spine-native");
+          if (previous.display === "") element.style.removeProperty("display");
+          else element.style.setProperty("display", previous.display, previous.priority);
+        }
+        hidden.clear();
+      };
+    }
+
     /** 占用率：投影两侧都齐了才算得出来，否则返回 null（挂件不渲染）。 */
     function readContext(pressure) {
       if (pressure === undefined || pressure === null) return null;
@@ -2848,6 +2892,14 @@ window.__ModuleLoader__.load({
       const rootRef = React.useRef(null);
       const panelRef = React.useRef(null);
       const available = context !== null;
+
+      // 原生那颗读数由我们接管：挂件在，原生就不该再占一个位置。
+      React.useLayoutEffect(() => {
+        if (!available) return undefined;
+        const root = rootRef.current;
+        if (root === null || root === undefined) return undefined;
+        return hideNativeMeter(root);
+      }, [available]);
 
       // 点到外面 / 按 Esc 收起。
       React.useEffect(() => {
@@ -2996,7 +3048,8 @@ window.__ModuleLoader__.load({
       ),
       h("button", { type: "button", className: "ctx-btn", disabled: pending, onClick: onCompact },
         h("svg", { viewBox: "0 0 1024 1024", width: 14, height: 14, "aria-hidden": "true", fill: "currentColor" },
-          h("path", { d: "M808.96 943.786667H215.04c-22.186667 0-44.373333-10.24-58.026667-29.013334-13.653333-18.773333-17.066667-42.666667-10.24-64.853333 25.6-80.213333 68.266667-230.4 68.266667-337.92 0-107.52-42.666667-257.706667-68.266667-337.92-6.826667-22.186667-3.413333-46.08 10.24-64.853333 13.653333-18.773333 34.133333-29.013333 58.026667-29.013334h593.92c22.186667 0 44.373333 10.24 58.026667 29.013334 13.653333 18.773333 17.066667 42.666667 10.24 64.853333-25.6 80.213333-68.266667 230.4-68.266667 337.92 0 107.52 42.666667 257.706667 68.266667 337.92 6.826667 22.186667 3.413333 46.08-10.24 64.853333-13.653333 18.773333-34.133333 29.013333-58.026667 29.013334z" }),
+          h("path", { d: "M808.96 943.786667H215.04c-22.186667 0-44.373333-10.24-58.026667-29.013334-13.653333-18.773333-17.066667-42.666667-10.24-64.853333 25.6-80.213333 68.266667-230.4 68.266667-337.92 0-107.52-42.666667-257.706667-68.266667-337.92-6.826667-22.186667-3.413333-46.08 10.24-64.853333 13.653333-18.773333 34.133333-29.013333 58.026667-29.013334h593.92c22.186667 0 44.373333 10.24 58.026667 29.013334 13.653333 18.773333 17.066667 42.666667 10.24 64.853333-25.6 80.213333-68.266667 230.4-68.266667 337.92 0 107.52 42.666667 257.706667 68.266667 337.92 6.826667 22.186667 3.413333 46.08-10.24 64.853333-13.653333 18.773333-34.133333 29.013333-58.026667 29.013334z m-614.4-785.066667c27.306667 81.92 71.68 238.933333 71.68 353.28 0 114.346667-44.373333 271.36-71.68 353.28-1.706667 6.826667-1.706667 13.653333 3.413333 18.773333 1.706667 3.413333 6.826667 8.533333 17.066667 8.533334h593.92c8.533333 0 13.653333-5.12 17.066667-8.533334 3.413333-5.12 5.12-11.946667 3.413333-18.773333-27.306667-81.92-71.68-238.933333-71.68-353.28 0-114.346667 44.373333-271.36 71.68-353.28 1.706667-6.826667 1.706667-13.653333-3.413333-18.773333-1.706667-3.413333-6.826667-8.533333-17.066667-8.533334H215.04c-8.533333 0-13.653333 5.12-17.066667 8.533334-3.413333 5.12-5.12 11.946667-3.413333 18.773333zM59.733333 740.693333c-5.12 0-10.24-1.706667-15.36-5.12-11.946667-8.533333-13.653333-23.893333-5.12-35.84 29.013333-39.253333 40.96-126.293333 40.96-187.733333 0-61.44-10.24-148.48-40.96-187.733333-8.533333-11.946667-6.826667-27.306667 5.12-35.84s27.306667-6.826667 35.84 5.12c46.08 63.146667 51.2 182.613333 51.2 218.453333 0 35.84-3.413333 157.013333-51.2 218.453333-5.12 6.826667-11.946667 10.24-20.48 10.24z" }),
+          h("path", { d: "M648.533333 344.746667H375.466667c-13.653333 0-25.6-11.946667-25.6-25.6s11.946667-25.6 25.6-25.6h273.066666c13.653333 0 25.6 11.946667 25.6 25.6s-11.946667 25.6-25.6 25.6zM648.533333 537.6H375.466667c-13.653333 0-25.6-11.946667-25.6-25.6s11.946667-25.6 25.6-25.6h273.066666c13.653333 0 25.6 11.946667 25.6 25.6s-11.946667 25.6-25.6 25.6zM467.626667 718.506667H375.466667c-13.653333 0-25.6-11.946667-25.6-25.6s11.946667-25.6 25.6-25.6h90.453333c13.653333 0 25.6 11.946667 25.6 25.6s-10.24 25.6-23.893333 25.6zM964.266667 740.693333c-8.533333 0-18.773333-5.12-22.186667-13.653333-32.426667-64.853333-47.786667-134.826667-47.786667-215.04 0-35.84 3.413333-157.013333 49.493334-218.453333 8.533333-11.946667 23.893333-13.653333 35.84-5.12 11.946667 8.533333 13.653333 23.893333 5.12 35.84-29.013333 39.253333-39.253333 126.293333-39.253334 187.733333 0 73.386667 13.653333 134.826667 42.666667 192.853333 6.826667 11.946667 1.706667 27.306667-11.946667 34.133334-3.413333 1.706667-8.533333 1.706667-11.946666 1.706666z" }),
         ),
         pending ? t("ctx.compacting") : t("ctx.compact"),
       ),
@@ -3265,7 +3318,7 @@ window.__ModuleLoader__.load({
         NewsCard, readSeenVersion, writeSeenVersion, NEWS_SEEN_KEY, newsShouldAuto, CLIENT_NEWS, mergeNews, compareVersion,
         // 输入框挂件：导出纯函数与组件，供离线渲染测试。
         ContextDock, CONTEXT_CSS, PAGE_CSS, CTX_KNIVES,
-        readContext, readContextSkill, buildContextRows, readKnifeStats,
+        readContext, readContextSkill, buildContextRows, readKnifeStats, hideNativeMeter,
       },
     };
   },

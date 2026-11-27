@@ -184,9 +184,26 @@ console.log("5. ContextDock 渲染");
   ok(["ctx.colName", "ctx.colCuts", "ctx.colTokens", "ctx.colShare"].every((k) => visible.includes(k)), "四列表头齐全");
   const compactBtn = findNode(tree, (n) => n.type === "button" && String(n.props?.className || "").includes("ctx-btn"));
   ok(compactBtn.length === 1, "有且只有一个压缩按钮");
+  // 图标是两段 path：外框 + 内部横线。只抄一段会渲染成一个实心方块。
+  const iconPaths = (compactBtn[0].children || []).flatMap((child) => (child.children || []))
+    .filter((n) => n.type === "path");
+  ok(iconPaths.length === 2, "压缩按钮图标是两段 path（外框 + 内部线条）：" + iconPaths.length);
+  ok(iconPaths.every((n) => String(n.props?.d || "").length > 500), "两段 path 都是完整图形，不是截断的片段");
   const trigger = findNode(tree, (n) => n.type === "button" && String(n.props?.className || "").includes("ctx-trigger"));
   ok(trigger.length === 1 && trigger[0].props["aria-haspopup"] === "dialog", "触发按钮声明成 dialog");
   ok(trigger[0].props["data-spine-context-root"] !== undefined || true, "触发按钮可被宿主识别");
+}
+
+console.log("5b. hideNativeMeter：只在有 dock 时接管，卸载要还原");
+{
+  ok(typeof T.hideNativeMeter === "function", "导出了 hideNativeMeter");
+  // 没有 dom / 没有 dock：必须退回 noop，绝不抛错。
+  const noop = T.hideNativeMeter(null);
+  ok(typeof noop === "function", "没有根节点也返回 disposer");
+  noop();
+  const detached = T.hideNativeMeter({ ownerDocument: { defaultView: {} }, closest: () => null });
+  ok(typeof detached === "function", "找不到 [data-composer-dock] 时也不抛错");
+  detached();
 }
 
 console.log("6. 投影缺失时不渲染（换回官方压缩也不报错）");
