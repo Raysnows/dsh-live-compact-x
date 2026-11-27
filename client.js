@@ -60,7 +60,7 @@ window.__ModuleLoader__.load({
       officialAbove: ["大刀启用线", "超过它且没有可切段时让大刀接手（模型或脚本）"],
       officialCooldownMs: ["大刀冷却（毫秒）", "两次大压缩的最小间隔"],
       officialScript: ["大刀归纳器", "0 = 当前模型摘要，1 = 本地脚本卡片"],
-  scriptEngine: ["本地脚本版本", "1 = 新版（价值密度选行 + 去重），0 = 稳定版（按原文顺序）"],
+      scriptEngine: ["本地脚本版本", "1 = 新版（价值密度选行 + 去重），0 = 稳定版（按原文顺序）"],
       paybackTurns: ["小刀回本轮数", "重算超过 净赚×它 就不切"],
       spanBandRatio: ["动态刀长比例", "单刀上限 = 上下文 × 它"],
       keepRounds: ["保留原文轮数", "最近几轮留原文"],
@@ -491,6 +491,7 @@ window.__ModuleLoader__.load({
       "spine.scriptModel": "当前模型",
       "spine.scriptLocal": "本地脚本",
       "spine.scriptModelHint": "用你当前正在用的模型把整段归纳成摘要（不是 DeepSeek 官方账号的模型）：更连贯、更会取舍，但会多发一次模型请求，有 LLM 成本。",
+      "spine.cutPointAdjust": "调整旋钮（展开后改值、保存）",
       "spine.diagTitle": "提交问题日志",
       "spine.diagCopy": "复制脱敏诊断",
       "spine.diagIssue": "去 GitHub 提 issue",
@@ -692,6 +693,7 @@ window.__ModuleLoader__.load({
       "spine.scriptModel": "Current model",
       "spine.scriptLocal": "Local script",
       "spine.scriptModelHint": "The model you are currently using writes the summary — not a DeepSeek official-account model. It is more coherent and selective, but makes one extra LLM request.",
+      "spine.cutPointAdjust": "Adjust knobs (expand to edit and save)",
       "spine.diagTitle": "Report a problem",
       "spine.diagCopy": "Copy sanitized diagnostics",
       "spine.diagIssue": "Open a GitHub issue",
@@ -788,13 +790,20 @@ window.__ModuleLoader__.load({
       ".sp-master-on{color:var(--dsw-alias-label-primary)}",
       ".sp-master:not(.sp-master-on){border-color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-border-l1))}",
       ".sp-master-state{font-weight:600;font-variant-numeric:tabular-nums}",
-      ".sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-bottom:10px}",
-      ".sp-kpi{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:8px 10px;min-width:0}",
+      ".sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(106px,1fr));gap:6px;margin-bottom:8px}",
+      ".sp-kpi{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:9px;padding:6px 9px;min-width:0}",
       ".sp-kpi-label{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".sp-kpi-value{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".sp-kpi-hint{font-size:10.5px;color:var(--dsw-alias-label-dimmed,var(--dsw-alias-label-secondary));margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
-      ".sp-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;margin-bottom:10px}",
-      ".sp-card-title{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:8px}",
+      ".sp-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:8px 10px;margin-bottom:8px}",
+      // 两块并排：右边那块以前整行空着，把「刀法统计」和「切点」放一起，打开就都看到。
+      ".sp-duo{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr);gap:8px;margin-bottom:8px;align-items:start}",
+      ".sp-duo>.sp-card{margin-bottom:0}",
+      ".sp-strategy{font-size:11px;line-height:1.65;color:var(--dsw-alias-label-secondary);margin:2px 0 6px}",
+      ".sp-knobs-summary{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary);cursor:pointer;list-style:none;padding:2px 0}",
+      ".sp-knobs-summary::-webkit-details-marker{display:none}",
+      "@media (max-width:760px){.sp-duo{grid-template-columns:1fr}}",
+      ".sp-card-title{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:6px}",
       ".sp-card-sub{margin-left:auto;font-weight:400;font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}",
       ".sp-bar{display:flex;gap:2px;height:22px;border-radius:6px;overflow:hidden;background:var(--dsw-alias-bg-layer-2)}",
       ".sp-seg{height:100%;min-width:2px}",
@@ -2300,10 +2309,20 @@ window.__ModuleLoader__.load({
             onClick: () => { if (store) void store.applyPreset(layer.scope, ""); bump(); },
           }, t("spine.presetClear")))
         : null;
-      const knobsCard = h("details", { className: "sp-details sp-card" },
-        h("summary", { className: "sp-card-title" }, t("spine.cutPoint"),
-          h("span", { className: "sp-card-sub" }, cutPointSub),
-          h(Chevron)),
+      // 收起状态也要有信息：把当前几个关键值排成一行，别让人看到一张空卡。
+      const strategyBits = [
+        [LABELS.chunkMax[0], fmtKnobValue("chunkMax", Number(settings.chunkMax) || 0)],
+        [LABELS.paybackTurns[0], fmtKnobValue("paybackTurns", Number(settings.paybackTurns) || 0)],
+        [LABELS.spanBandRatio[0], fmtKnobValue("spanBandRatio", Number(settings.spanBandRatio) || 0)],
+        [LABELS.officialAbove[0], Number(settings.officialAbove) > 0 ? fmtKnobValue("officialAbove", Number(settings.officialAbove)) : t("spine.offState")],
+        [LABELS.deepCutAbove[0], Number(settings.deepCutAbove) > 0 ? fmtKnobValue("deepCutAbove", Number(settings.deepCutAbove)) : t("spine.offState")],
+      ].map(([label, value]) => label + " " + value).join(" · ");
+      const knobsCard = h("div", { className: "sp-card sp-knobs-card" },
+        h("div", { className: "sp-card-title" }, t("spine.cutPoint"),
+          h("span", { className: "sp-card-sub" }, cutPointSub)),
+        h("div", { className: "sp-strategy", "data-strategy": "1" }, strategyBits),
+        h("details", { className: "sp-details sp-knobs" },
+          h("summary", { className: "sp-knobs-summary" }, t("spine.cutPointAdjust"), h(Chevron)),
         presetRow,
         customRow,
         activeRow,
@@ -2377,7 +2396,7 @@ window.__ModuleLoader__.load({
               h("summary", { className: "sp-group-title" }, head), body)
             : h("div", { key: group.id, className: "sp-group" },
               h("div", { className: "sp-group-title" }, head), body);
-        }));
+        })));
       const docsCard = h("details", { className: "sp-details sp-card" },
         h("summary", { className: "sp-card-title" }, t("spine.docs"),
           h("span", { className: "sp-card-sub" }, t("spine.docsHint")),
@@ -2485,9 +2504,9 @@ window.__ModuleLoader__.load({
           })),
         h("div", { className: "sp-grid" }, kpis),
         composition,
-        statsCard,
+        // 刀法统计与切点并排、放在第一屏：切点默认仍是收起的，点标题才展开旋钮。
+        h("div", { className: "sp-duo" }, statsCard, knobsCard),
         timelineCard,
-        knobsCard,
         docsCard,
         debugCard);
     }

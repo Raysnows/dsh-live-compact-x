@@ -255,7 +255,7 @@ walk(tree, (entry) => {
     if (head) walk(head, (x) => { if (x.kind === "text") label.push(x.value); });
     if (label.length) sections.push(label[0]);
   }
-  if (n.props?.className === "sp-card" && typeof n.type === "string") {
+  if (typeof n.type === "string" && String(n.props?.className || "").split(/\s+/).includes("sp-card")) {
     const title = (n.children || []).find((c) => c && c.props && c.props.className === "sp-card-title");
     const label = [];
     if (title) walk(title, (x) => { if (x.kind === "text") label.push(x.value); });
@@ -263,10 +263,37 @@ walk(tree, (entry) => {
   }
 });
 const uniqueSections = sections.filter((s, i) => sections.indexOf(s) === i);
-ok(uniqueSections[uniqueSections.length - 3] === "spine.cutPoint", "切点排在文档之前：" + uniqueSections.join("|"));
-ok(uniqueSections[uniqueSections.length - 2] === "spine.docs", "文档与出处排在切点之后：" + uniqueSections.join("|"));
+// 切点挪到第一屏（刀法统计右边），判据从「倒数第三」改成「在时间线与文档之前」。
+ok(uniqueSections.indexOf("spine.cutPoint") < uniqueSections.indexOf("spine.timeline"),
+  "切点排在时间线之前（打开就看得到）：" + uniqueSections.join("|"));
+ok(uniqueSections.indexOf("spine.timeline") < uniqueSections.indexOf("spine.docs"), "文档与出处排在时间线之后：" + uniqueSections.join("|"));
 ok(uniqueSections[uniqueSections.length - 1] === "spine.debug", "调试台在最后且收起：" + uniqueSections.join("|"));
 ok(uniqueSections.filter((sec) => sec === "spine.cutPoint").length === 1, "切点卡只出现一次");
+// 收起状态也要有信息：策略行只有一条
+{
+  let strategy = 0;
+  walk(T.renderPanel({ t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() }, fakeState, "session", () => {}, () => {}), ({ kind, node }) => {
+    if (kind === "node" && node.props && node.props["data-strategy"] === "1") strategy += 1;
+  });
+  ok(strategy === 1, "切点卡收起时仍有一行当前策略（" + strategy + "）");
+}
+// 刀法统计与切点并排：同一块 .sp-duo 里两块卡片，窄屏退成一列。
+{
+  const duo = [];
+  const duoTree = T.renderPanel({ t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() }, fakeState, "session", () => {}, () => {});
+  walk(duoTree, ({ kind, node }) => {
+    if (kind !== "node" || !node.props) return;
+    if (String(node.props.className || "").split(/\s+/).includes("sp-duo")) duo.push(node);
+  });
+  ok(duo.length === 1, "刀法统计与切点包在同一块并排容器里（" + duo.length + "）");
+  const css = String(T.SPINE_CSS);
+  ok(css.includes(".sp-duo{display:grid"), "并排容器用 grid");
+  ok(css.includes("@media (max-width:760px){.sp-duo{grid-template-columns:1fr}}"), "窄屏退成一列");
+  ok(css.includes(".sp-duo>.sp-card{margin-bottom:0}"), "并排里的卡片不再各留一条外边距");
+}
+// 信息密度：卡片内边距与 KPI 间距都收紧过，值写死——改样式时这里会提醒。
+ok(String(T.SPINE_CSS).includes("padding:8px 10px"), "卡片内边距收紧到 8px/10px");
+ok(String(T.SPINE_CSS).includes("minmax(106px,1fr)"), "KPI 最小宽度收到 106px");
 const knobOrder = T.KNOB_GROUPS.map((g) => g.id).join(",");
 ok(knobOrder === "small,big,script,mid", "本地脚本组排在刀法之后、实验性中刀之前（" + knobOrder + "）");
 ok(T.KNOB_GROUPS.find((g) => g.id === "mid").experimental === true, "中刀标了实验性");
@@ -367,14 +394,11 @@ console.log("9b. 切点卡：预设档 + 参考范围");
   let cutCard = null;
   walk(tree, (entry) => {
     const n = entry.node;
-    if (n && n.type === "details" && n.props?.className === "sp-details sp-card") {
-      const head = (n.children || [])[0];
-      const label = [];
-      if (head) walk(head, (x) => { if (x.kind === "text") label.push(x.value); });
-      if (label[0] === "spine.cutPoint") cutCard = n;
-    }
+    // 旋钮现在收在切点卡内部的 details 里（标题行还在外层卡片上）。
+    if (n && n.type === "details" && String(n.props?.className || "").includes("sp-knobs")) cutCard = n;
   });
   ok(Boolean(cutCard), "没有 open 属性的 details：默认收起");
+  ok(Boolean(cutCard) && String(cutCard.props.className).includes("sp-knobs"), "旋钮收在切点卡的 details 里（" + (cutCard && cutCard.props.className) + "）");
   ok(cutCard && !("open" in cutCard.props), "切点卡默认不展开");
   const inside = (root, label) => {
     const found = [];
