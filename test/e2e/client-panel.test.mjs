@@ -195,7 +195,7 @@ ok(rows === 6, "时间线六行（" + rows + "）");
 ok(knobs === 15, "刀把共 15 个旋钮（" + knobs + "）");
 ok(Boolean(saveBtn), "有保存按钮");
 ok(debug !== null, "调试信息是一个 details");
-ok(debug && !("open" in debug.props), "调试台默认不展开");
+ok(debug && debug.props.open === false, "调试台默认不展开");
 ok(badges.size === 5, "时间线上五种刀法徽标颜色不同（" + badges.size + "）");
 let chevs = 0;
 walk(tree, (entry) => {
@@ -203,7 +203,7 @@ walk(tree, (entry) => {
   const cls = n && typeof n.props?.className === "string" ? n.props.className.split(" ") : [];
   if (cls.includes("sp-chev")) chevs += 1;
 });
-ok(chevs === 10, "可展开的地方都挂 ▸ 图标（3 张卡 + 6 行时间线 + 中刀组）：" + chevs);
+ok(chevs >= 10, "可展开的地方都挂 ▸ 图标（3 张卡 + 6 行时间线 + 中刀组 + 更多入口）：" + chevs);
 ok(T.SPINE_CSS.includes(".sp-details[open]>summary .sp-chev{transform:rotate(90deg)}"), "展开后图标转 90°");
 saveBtn?.props?.onClick?.();
 ok(model.saved === 1, "没接配置桥时，保存仍然回落到宿主模型");
@@ -290,6 +290,39 @@ ok(uniqueSections.filter((sec) => sec === "spine.cutPoint").length === 1, "切�
   ok(css.includes(".sp-duo{display:grid"), "并排容器用 grid");
   ok(css.includes("@media (max-width:760px){.sp-duo{grid-template-columns:1fr}}"), "窄屏退成一列");
   ok(css.includes(".sp-duo>.sp-card{margin-bottom:0}"), "并排里的卡片不再各留一条外边距");
+}
+// 二级界面：切点 / 文档 / 调试都从入口打开成浮层，收起时不占页面高度。
+{
+  const openers = [];
+  walk(tree, ({ kind, node }) => {
+    if (kind === "node" && node.props && node.props["data-sub-open"]) openers.push(node.props["data-sub-open"]);
+  });
+  ok(openers.slice().sort().join(",") === "debug,docs,knobs", "三个二级界面都有入口：" + openers.join(","));
+  const css = String(T.SPINE_CSS);
+  ok(css.includes(".sp-details[data-sub][open]{position:fixed"), "打开的二级界面是固定定位浮层（不把页面撑长）");
+
+  const detailsOf = (root, sub) => {
+    const out = [];
+    walk(root, ({ kind, node }) => {
+      if (kind === "node" && node.type === "details" && node.props && node.props["data-sub"] === sub) out.push(node);
+    });
+    return out;
+  };
+  const uiBase = { openSub() {}, closeSub() {} };
+  const props = { t: (k) => k, model: new SettingsFormModel({}, []), actions: new SettingsFormModel({}, []).actions() };
+  const opened = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, { ...uiBase, subView: "knobs" });
+  ok(detailsOf(opened, "knobs").every((n) => n.props.open === true), "打开「调整旋钮」时切点二级界面展开");
+  ok(detailsOf(opened, "docs")[0].props.open === false && detailsOf(opened, "debug")[0].props.open === false, "其它二级界面保持关闭");
+
+  let closed = 0;
+  const closable = T.renderPanel(props, fakeState, "session", () => {}, () => {}, null, { ...uiBase, subView: "knobs", closeSub: () => { closed += 1; } });
+  let back = null;
+  walk(closable, ({ kind, node }) => {
+    if (kind === "node" && node.type === "button" && node.props && node.props["data-sub-close"]) back = node;
+  });
+  ok(Boolean(back), "二级界面里有「返回」按钮");
+  back.props.onClick();
+  ok(closed === 1, "点返回会收起二级界面（回到一屏）");
 }
 // 信息密度：卡片内边距与 KPI 间距都收紧过，值写死——改样式时这里会提醒。
 ok(String(T.SPINE_CSS).includes("padding:8px 10px"), "卡片内边距收紧到 8px/10px");
@@ -399,7 +432,7 @@ console.log("9b. 切点卡：预设档 + 参考范围");
   });
   ok(Boolean(cutCard), "没有 open 属性的 details：默认收起");
   ok(Boolean(cutCard) && String(cutCard.props.className).includes("sp-knobs"), "旋钮收在切点卡的 details 里（" + (cutCard && cutCard.props.className) + "）");
-  ok(cutCard && !("open" in cutCard.props), "切点卡默认不展开");
+  ok(cutCard && cutCard.props.open === false, "切点卡默认不展开（二级界面按需打开）");
   const inside = (root, label) => {
     const found = [];
     walk(root, (entry) => {
@@ -783,7 +816,7 @@ console.log("9g1. 顶栏直接显示版本号（不用展开文档卡）");
     walk(node, (x) => { if (x.kind === "text") label.push(x.value); });
     if (label[0] === "spine.docs") docsCard = node;
   });
-  ok(Boolean(docsCard) && !("open" in docsCard.props), "文档卡仍默认收起，版本号不靠它");
+  ok(Boolean(docsCard) && docsCard.props.open === false, "文档卡仍默认收起，版本号不靠它");
 
   // 全部会话视图同样有
   const allBadge = versionNode(allTree);

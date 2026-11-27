@@ -492,6 +492,10 @@ window.__ModuleLoader__.load({
       "spine.scriptLocal": "本地脚本",
       "spine.scriptModelHint": "用你当前正在用的模型把整段归纳成摘要（不是 DeepSeek 官方账号的模型）：更连贯、更会取舍，但会多发一次模型请求，有 LLM 成本。",
       "spine.cutPointAdjust": "调整旋钮（展开后改值、保存）",
+      "spine.openKnobs": "调整旋钮",
+      "spine.subBack": "返回",
+      "spine.moreInfo": "更多",
+      "spine.moreInfoHint": "点开是浮层，不占页面",
       "spine.diagTitle": "提交问题日志",
       "spine.diagCopy": "复制脱敏诊断",
       "spine.diagIssue": "去 GitHub 提 issue",
@@ -694,6 +698,10 @@ window.__ModuleLoader__.load({
       "spine.scriptLocal": "Local script",
       "spine.scriptModelHint": "The model you are currently using writes the summary — not a DeepSeek official-account model. It is more coherent and selective, but makes one extra LLM request.",
       "spine.cutPointAdjust": "Adjust knobs (expand to edit and save)",
+      "spine.openKnobs": "Adjust knobs",
+      "spine.subBack": "Back",
+      "spine.moreInfo": "More",
+      "spine.moreInfoHint": "opens in a floating layer",
       "spine.diagTitle": "Report a problem",
       "spine.diagCopy": "Copy sanitized diagnostics",
       "spine.diagIssue": "Open a GitHub issue",
@@ -799,6 +807,15 @@ window.__ModuleLoader__.load({
       // 两块并排：右边那块以前整行空着，把「刀法统计」和「切点」放一起，打开就都看到。
       ".sp-duo{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr);gap:8px;margin-bottom:8px;align-items:start}",
       ".sp-duo>.sp-card{margin-bottom:0}",
+      ".sp-duo-col{display:grid;gap:8px;align-content:start;min-width:0}",
+      ".sp-duo-col>.sp-card{margin-bottom:0}",
+      // 二级界面：切点 / 文档 / 调试打开时脱离文档流、浮在面板上方，不再把主页面撑长。
+      ".sp-details[data-sub][open]{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:82;width:min(860px,calc(100vw - 40px));max-height:min(82vh,820px);overflow:auto;margin:0;padding:12px 14px 14px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.34)}",
+      ".sp-sub-close{display:inline-flex;align-items:center;gap:6px;margin:2px 0 8px}",
+      ".sp-entries{display:grid;gap:6px}",
+      ".sp-entry{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:6px 9px}",
+      ".sp-entry-name{font-size:12px;color:var(--dsw-alias-label-primary)}",
+      ".sp-entry-hint{font-size:10.5px;color:var(--dsw-alias-label-secondary)}",
       ".sp-strategy{font-size:11px;line-height:1.65;color:var(--dsw-alias-label-secondary);margin:2px 0 6px}",
       ".sp-knobs-summary{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary);cursor:pointer;list-style:none;padding:2px 0}",
       ".sp-knobs-summary::-webkit-details-marker{display:none}",
@@ -2321,8 +2338,25 @@ window.__ModuleLoader__.load({
         h("div", { className: "sp-card-title" }, t("spine.cutPoint"),
           h("span", { className: "sp-card-sub" }, cutPointSub)),
         h("div", { className: "sp-strategy", "data-strategy": "1" }, strategyBits),
-        h("details", { className: "sp-details sp-knobs" },
+        h("button", {
+          className: "sp-btn sp-entry",
+          "data-sub-open": "knobs",
+          onClick: () => ui && ui.openSub && ui.openSub("knobs"),
+        },
+          h("span", { className: "sp-entry-name" }, t("spine.openKnobs")),
+          h(Chevron)),
+        h("details", {
+          className: "sp-details sp-knobs",
+          "data-sub": "knobs",
+          open: Boolean(ui && ui.subView === "knobs"),
+          onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
+        },
           h("summary", { className: "sp-knobs-summary" }, t("spine.cutPointAdjust"), h(Chevron)),
+          h("button", {
+            className: "sp-btn sp-sub-close",
+            "data-sub-close": "1",
+            onClick: () => ui && ui.closeSub && ui.closeSub(),
+          }, t("spine.subBack")),
         presetRow,
         customRow,
         activeRow,
@@ -2397,11 +2431,42 @@ window.__ModuleLoader__.load({
             : h("div", { key: group.id, className: "sp-group" },
               h("div", { className: "sp-group-title" }, head), body);
         })));
-      const docsCard = h("details", { className: "sp-details sp-card" },
+      // 左列的空白别浪费：把「调试信息」「文档与出处」做成入口放这儿，
+      // 点开都是浮层二级界面，不会把主页面的卡片挤长。
+      const entriesCard = h("div", { className: "sp-card sp-entries-card" },
+        h("div", { className: "sp-card-title" }, t("spine.moreInfo"),
+          h("span", { className: "sp-card-sub" }, t("spine.moreInfoHint"))),
+        h("button", {
+          className: "sp-btn sp-entry",
+          "data-sub-open": "debug",
+          onClick: () => ui && ui.openSub && ui.openSub("debug"),
+        },
+          h("span", { className: "sp-entry-name" }, t("spine.debug")),
+          h("span", { className: "sp-entry-hint" }, t("spine.debugHint")),
+          h(Chevron)),
+        h("button", {
+          className: "sp-btn sp-entry",
+          "data-sub-open": "docs",
+          onClick: () => ui && ui.openSub && ui.openSub("docs"),
+        },
+          h("span", { className: "sp-entry-name" }, t("spine.docs")),
+          h("span", { className: "sp-entry-hint" }, t("spine.docsHint")),
+          h(Chevron)));
+      const docsCard = h("details", {
+        className: "sp-details sp-card",
+        "data-sub": "docs",
+        open: Boolean(ui && ui.subView === "docs"),
+        onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
+      },
         h("summary", { className: "sp-card-title" }, t("spine.docs"),
           h("span", { className: "sp-card-sub" }, t("spine.docsHint")),
           h(Chevron)),
         h("div", { className: "sp-detail" },
+          h("button", {
+            className: "sp-btn sp-sub-close",
+            "data-sub-close": "1",
+            onClick: () => ui && ui.closeSub && ui.closeSub(),
+          }, t("spine.subBack")),
           h(DocRow, {
             t, label: t("spine.docsReadme"), value: docs.readme, which: "readme",
             exists: docs.readmeExists !== false, preview: cfg && cfg.doc, loading: Boolean(cfg && cfg.docLoading),
@@ -2418,11 +2483,21 @@ window.__ModuleLoader__.load({
           h(DocRow, { t, label: t("spine.docsRepo"), value: docs.repo, href: docs.repo }),
           h(DocRow, { t, label: t("spine.docsIssues"), value: docs.issues, href: docs.issues }),
           h(DocRow, { t, label: t("spine.version"), value: docs.version })));
-      const debugCard = h("details", { className: "sp-details sp-card" },
+      const debugCard = h("details", {
+        className: "sp-details sp-card",
+        "data-sub": "debug",
+        open: Boolean(ui && ui.subView === "debug"),
+        onToggle: (event) => { if (!event.currentTarget.open && ui && ui.closeSub) ui.closeSub(); },
+      },
         h("summary", { className: "sp-card-title" }, t("spine.debug"),
           h("span", { className: "sp-card-sub" }, t("spine.debugHint")),
           h(Chevron)),
         h("div", { className: "sp-detail" },
+          h("button", {
+            className: "sp-btn sp-sub-close",
+            "data-sub-close": "1",
+            onClick: () => ui && ui.closeSub && ui.closeSub(),
+          }, t("spine.subBack")),
           h("div", { className: "sp-detail-row" },
             h("span", { className: "sp-dim" }, t("spine.dirLabel")),
             h("code", { className: "sp-path", title: state.shadowDir || "" }, shortPath(state.shadowDir || "—")),
@@ -2504,8 +2579,11 @@ window.__ModuleLoader__.load({
           })),
         h("div", { className: "sp-grid" }, kpis),
         composition,
-        // 刀法统计与切点并排、放在第一屏：切点默认仍是收起的，点标题才展开旋钮。
-        h("div", { className: "sp-duo" }, statsCard, knobsCard),
+        // 第一屏：左边刀法统计（下方补「更多」入口，吃掉空白），右边切点；
+        // 切点 / 文档 / 调试都是二级界面（浮层），收起时只占一行标题，不挤压主页面。
+        h("div", { className: "sp-duo" },
+          h("div", { className: "sp-duo-col" }, statsCard, entriesCard),
+          h("div", { className: "sp-duo-col" }, knobsCard)),
         timelineCard,
         docsCard,
         debugCard);
@@ -2542,6 +2620,8 @@ window.__ModuleLoader__.load({
       const [midAsk, setMidAsk] = React.useState(false);
       const [midAck, setMidAck] = React.useState(false);
       const [timelineAll, setTimelineAll] = React.useState(false);
+      // 二级界面：null | knobs | docs | debug。打开时浮在面板上方，关掉页面高度不变。
+      const [subView, setSubView] = React.useState(null);
       // 自定义档：新建表单（＋）、名字、范围，以及「再点一次删除」的待确认 id。
       const [presetForm, setPresetForm] = React.useState(false);
       const [presetName, setPresetName] = React.useState("");
@@ -2576,6 +2656,9 @@ window.__ModuleLoader__.load({
         }, {
           timelineAll,
           toggleTimeline: () => setTimelineAll((value) => !value),
+          subView,
+          openSub: (name) => setSubView(name),
+          closeSub: () => setSubView(null),
           // 更新日志的状态必须放在 ui 里：面板读的是 ui.newsOpen / ui.toggleNews。
           // 之前放进第 6 个参数（mid），于是 open 恒为 false、按钮点了没反应。
           newsOpen,
